@@ -1,0 +1,63 @@
+.main-header {
+    font-size: 2.5rem;
+    color: #FF6B6B;
+    text-align: center;
+    margin-bottom: 1rem;
+    animation: fadeIn 1s ease-in;
+}
+
+.recipe-card {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 10px 0;
+    border-left: 5px solid #FF6B6B;
+    transition: transform 0.3s ease;
+}
+
+.recipe-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.ingredient-item {
+    padding: 5px;
+    margin: 2px 0;
+    background-color: white;
+    border-radius: 5px;
+    border-left: 3px solid #4ECDC4;
+}
+
+.warning {
+    color: #ff4d4d;
+    font-weight: bold;
+    animation: pulse 2s infinite;
+}
+
+.success {
+    color: #28a745;
+    font-weight: bold;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.stButton > button {
+    background:  #FF6B6B;
+    color: white;
+    border: none;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(255,107,107,0.3);
+}

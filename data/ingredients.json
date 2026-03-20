@@ -1,0 +1,74 @@
+{
+  "ingredients": [
+    {
+      "name": "мука",
+      "category": "бакалея",
+      "allergens": [
+        "глютен"
+      ],
+      "unit": "г"
+    },
+    {
+      "name": "молоко",
+      "category": "молочные",
+      "allergens": [
+        "лактоза"
+      ],
+      "unit": "мл"
+    },
+    {
+      "name": "яйца",
+      "category": "яйца",
+      "allergens": [
+        "яйца"
+      ],
+      "unit": "шт"
+    },
+    {
+      "name": "творог",
+      "category": "молочные",
+      "allergens": [
+        "лактоза"
+      ],
+      "unit": "г"
+    },
+    {
+      "name": "масло сливочное",
+      "category": "молочные",
+      "allergens": [
+        "лактоза"
+      ],
+      "unit": "г"
+    },
+    {
+      "name": "масло растительное",
+      "category": "масла",
+      "allergens": [],
+      "unit": "мл"
+    },
+    {
+      "name": "сахар",
+      "category": "сладкое",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "соль",
+      "category": "специи",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "разрыхлитель",
+      "category": "разрыхлители",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "какао",
+      "category": "сладкое",
+      "allergens": [],
+      "unit": "г"
+    }
+  ]
+}
