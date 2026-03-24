@@ -95,20 +95,12 @@ class RecipeManager:
 class RecipeAdapter:
     # Адаптация рецептов под продукты пользователя
 
-    # ИСПОЛЬЗОВАНИЕ ИИ В КОДЕ:
-    # 1. self.substitution_confidence - Имитация ML модели для весов уверенности замен
-    # 2. _check_substitution_confidence - ML модель оценки качества замены
-    # 3. _calculate_servings - ML алгоритм расчета порций на основе анализа
-    # 4. _optimize_portions - ИИ оптимизация пропорций при избытке продуктов
-    # 5. _analyze_diet_compatibility - Анализ совместимости с диетой
-
     def __init__(self):
         self.manager = RecipeManager()
-        # ИИ: база знаний для весов уверенности замен
         self.substitution_confidence = {}
 
     def parse_user_products(self, text):
-        # Парсит продукты пользователя с поддержкой нулевых значений
+        # Парсит продукты пользователя
         products = []
         for item in text.split(','):
             item = item.strip()
@@ -121,10 +113,6 @@ class RecipeAdapter:
                 quantity = float(match.group(2).replace(',', '.'))
                 unit = match.group(3) if match.group(3) else 'шт'
 
-                # ИИ: проверка на логические ошибки в количестве
-                if quantity == 0:
-                    quantity = 0.0
-
                 products.append({
                     'name': name,
                     'quantity': quantity,
@@ -133,7 +121,7 @@ class RecipeAdapter:
             else:
                 products.append({
                     'name': item.lower(),
-                    'quantity': 9999,
+                    'quantity': 0,
                     'unit': 'шт'
                 })
         return products
@@ -155,49 +143,88 @@ class RecipeAdapter:
 
     def _analyze_diet_compatibility(self, ingredient, diet):
         # ИИ: анализ совместимости ингредиента с диетой
-        # Использует отдельный модуль diet_analyzer
         compatible, alternatives = analyze_diet_compatibility(ingredient, diet)
 
         if not compatible:
-            # ИИ: возвращаем рекомендации по замене
             return False, alternatives
 
         return True, None
 
-    # Также можно добавить новый метод для полного анализа рецепта:
-
     def analyze_full_recipe_diet(self, ingredients, diet):
-        # ИИ: полный анализ рецепта на совместимость с диетой
         return diet_analyzer.analyze_recipe_for_diet(ingredients, diet)
 
+    def _calculate_optimal_scale(self, ingredients, user_dict, scale_factor_from_short):
+        """
+        ИИ: расчет оптимального коэффициента масштабирования
+        Учитывает как недостаток, так и избыток продуктов
+        """
+        # Начинаем с коэффициента от недостатка
+        optimal_scale = scale_factor_from_short
+
+        # Проверяем избыток продуктов
+        for ing in ingredients:
+            if ing['name'] in user_dict:
+                user_q = user_dict[ing['name']]['quantity']
+                if user_q > 0 and user_q > ing['quantity']:
+                    # Если у пользователя больше, чем нужно
+                    potential_scale = user_q / ing['quantity']
+                    # Берем максимальный коэффициент (чтобы использовать весь избыток)
+                    if potential_scale > optimal_scale:
+                        optimal_scale = potential_scale
+
+        return optimal_scale
+
     def _optimize_portions(self, ingredients, user_dict, scale_factor):
-        # ИИ: оптимизация рецепта при избытке продуктов
+        """
+        ИИ: оптимизация рецепта с единым коэффициентом масштабирования
+        """
         optimized_ingredients = []
         excess_info = []
 
         for ing in ingredients:
+            new_quantity = ing['quantity'] * scale_factor
+
+            # Проверяем, есть ли у пользователя этот продукт в достаточном количестве
             if ing['name'] in user_dict:
                 user_q = user_dict[ing['name']]['quantity']
-                if user_q > ing['quantity'] * scale_factor:
-                    # ИИ: рассчитываем оптимальное увеличение
-                    optimal_factor = user_q / ing['quantity']
-                    excess_info.append({
-                        'name': ing['name'],
-                        'current': ing['quantity'] * scale_factor,
-                        'optimal': user_q,
-                        'factor': optimal_factor,
-                        'unit': ing['unit']
+                if user_q > 0 and user_q >= new_quantity:
+                    # У пользователя есть достаточно, используем рассчитанное количество
+                    if user_q > new_quantity * 1.1:  # Если есть значительный избыток (>10%)
+                        excess_info.append({
+                            'name': ing['name'],
+                            'current': ing['quantity'],
+                            'scaled': new_quantity,
+                            'available': user_q,
+                            'excess': user_q - new_quantity,
+                            'unit': ing['unit']
+                        })
+                    optimized_ingredients.append({
+                        **ing,
+                        'quantity': round(new_quantity, 1)
                     })
-                    # Применяем увеличение
+                elif user_q > 0 and user_q < new_quantity:
+                    # У пользователя есть, но меньше чем нужно по новому масштабу
+                    # Используем то, что есть
                     optimized_ingredients.append({
                         **ing,
                         'quantity': user_q,
-                        'optimized': True
+                        'limited': True,
+                        'original_quantity': new_quantity
                     })
                 else:
-                    optimized_ingredients.append(ing)
+                    # Продукта нет (user_q == 0)
+                    optimized_ingredients.append({
+                        **ing,
+                        'quantity': new_quantity,
+                        'missing': True
+                    })
             else:
-                optimized_ingredients.append(ing)
+                # Продукта нет в списке пользователя
+                optimized_ingredients.append({
+                    **ing,
+                    'quantity': new_quantity,
+                    'missing': True
+                })
 
         return optimized_ingredients, excess_info
 
@@ -211,8 +238,16 @@ class RecipeAdapter:
         missing = []  # совсем нет
         short = []  # есть, но мало
         diet_issues = []  # проблемы с диетой
+        available = []  # есть в достаточном количестве
 
-        # ИИ: анализ нехватки, избытка и совместимости с диетой
+        # Определяем основные ингредиенты, без которых рецепт не имеет смысла
+        CORE_INGREDIENTS = ['мука', 'яйца', 'молоко', 'творог', 'мясо', 'рыба', 'крупа', 'рис']
+        # Второстепенные ингредиенты, которые можно пропустить без замены
+        MINOR_INGREDIENTS = ['разрыхлитель', 'сода', 'соль', 'перец', 'специи', 'сахар', 'ванилин']
+
+        # Первый проход: анализ наличия продуктов и определение базового масштаба
+        base_scale = 1.0
+
         for ing in recipe_ingredients:
             # Проверка совместимости с диетой
             if diet and diet != "Нет":
@@ -234,40 +269,170 @@ class RecipeAdapter:
                         'user_quantity': user_q,
                         'shortage': ing['quantity'] - user_q
                     })
+                    # Рассчитываем масштаб от недостатка
+                    scale_from_this = user_q / ing['quantity']
+                    if scale_from_this < base_scale:
+                        base_scale = scale_from_this
+                else:
+                    available.append(ing)
             else:
                 missing.append(ing)
 
+        # Проверка аллергий для ВСЕХ ингредиентов
         problem_allergies = []
         if allergies:
-            problem_allergies = self.check_allergies(recipe_ingredients, allergies)
+            for ing in recipe_ingredients:
+                ing_info = self.manager.get_ingredient_info(ing['name'])
+                if ing_info and ing_info.get('allergens'):
+                    for allergen in allergies:
+                        if allergen.lower() in [a.lower() for a in ing_info['allergens']]:
+                            problem_allergies.append({
+                                **ing,
+                                'allergen': allergen,
+                                'info': ing_info
+                            })
 
-        # ИИ: определение оптимального масштабирования
-        scale_factor = 1.0
-        if short:
-            most_critical = min(short, key=lambda x: x['user_quantity'] / x['quantity'])
-            scale_factor = most_critical['user_quantity'] / most_critical['quantity']
+        # ИИ: расчет оптимального коэффициента масштабирования
+        optimal_scale = base_scale
 
-        # ИИ: оптимизация при избытке
-        scaled_ingredients, excess_info = self._optimize_portions(
-            recipe_ingredients, user_dict, scale_factor
-        )
+        # Проверяем избыток продуктов - увеличиваем масштаб, чтобы использовать избыток
+        for ing in recipe_ingredients:
+            if ing['name'] in user_dict:
+                user_q = user_dict[ing['name']]['quantity']
+                if user_q > 0 and user_q > ing['quantity'] * optimal_scale:
+                    potential_scale = user_q / ing['quantity']
+                    if potential_scale > optimal_scale:
+                        optimal_scale = potential_scale
+
+        # Применяем масштабирование ко всем ингредиентам
+        scaled_ingredients = []
+        excess_info = []
+
+        for ing in recipe_ingredients:
+            new_quantity = ing['quantity'] * optimal_scale
+
+            # Проверяем наличие у пользователя
+            if ing['name'] in user_dict:
+                user_q = user_dict[ing['name']]['quantity']
+
+                if user_q > 0 and user_q >= new_quantity:
+                    # У пользователя есть достаточно
+                    if user_q > new_quantity * 1.05:
+                        excess_info.append({
+                            'name': ing['name'],
+                            'recipe_needs': round(new_quantity, 1),
+                            'user_has': user_q,
+                            'excess': round(user_q - new_quantity, 1),
+                            'unit': ing['unit']
+                        })
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': round(new_quantity, 1)
+                    })
+                elif user_q > 0 and user_q < new_quantity:
+                    # У пользователя есть, но меньше чем нужно
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': user_q,
+                        'limited': True,
+                        'original_quantity': round(new_quantity, 1)
+                    })
+                else:
+                    # Продукта нет (user_q == 0)
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': round(new_quantity, 1),
+                        'missing': True
+                    })
+            else:
+                # Продукта нет в списке пользователя
+                scaled_ingredients.append({
+                    **ing,
+                    'quantity': round(new_quantity, 1),
+                    'missing': True
+                })
+
+        # СОБИРАЕМ ПРОБЛЕМЫ, КОТОРЫЕ ТРЕБУЮТ ЗАМЕНЫ
+        issues_to_resolve = {}
+
+        # Проверяем, есть ли у пользователя основные ингредиенты
+        has_core_ingredients = False
+        for ing in recipe_ingredients:
+            if ing['name'] in CORE_INGREDIENTS:
+                if ing['name'] in user_dict and user_dict[ing['name']]['quantity'] > 0:
+                    has_core_ingredients = True
+                    break
+
+        # Добавляем отсутствующие ингредиенты (только те, которые реально нужны)
+        for ing in recipe_ingredients:
+            ing_name = ing['name']
+            # Проверяем, есть ли у пользователя этот продукт
+            has_product = ing_name in user_dict and user_dict[ing_name]['quantity'] > 0
+
+            if not has_product:
+                # Определяем, нужно ли искать замену для этого ингредиента
+                need_substitution = True
+
+                # Если это второстепенный ингредиент и у пользователя есть основные продукты
+                if ing_name in MINOR_INGREDIENTS and has_core_ingredients:
+                    need_substitution = False  # Не ищем замену для специй и разрыхлителя
+
+                # Если это разрыхлитель и у пользователя нет аллергии
+                if ing_name == 'разрыхлитель' and 'разрыхлитель' not in [a.get('allergen') for a in problem_allergies]:
+                    need_substitution = False  # Не заменяем разрыхлитель автоматически
+
+                if need_substitution:
+                    if ing_name not in issues_to_resolve:
+                        issues_to_resolve[ing_name] = {
+                            'ingredient': ing,
+                            'reasons': []
+                        }
+                    issues_to_resolve[ing_name]['reasons'].append('missing')
+
+        # Добавляем аллергии (это всегда требует замены!)
+        for ing in problem_allergies:
+            ing_name = ing['name']
+            if ing_name not in issues_to_resolve:
+                issues_to_resolve[ing_name] = {
+                    'ingredient': ing,
+                    'reasons': []
+                }
+            issues_to_resolve[ing_name]['reasons'].append(f"allergy_{ing['allergen']}")
+
+        # Добавляем проблемы с диетой (только если нет аллергии на этот же продукт)
+        for ing in diet_issues:
+            ing_name = ing['name']
+            if ing_name not in issues_to_resolve:
+                issues_to_resolve[ing_name] = {
+                    'ingredient': ing,
+                    'reasons': []
+                }
+            has_allergy = any(f"allergy_" in r for r in issues_to_resolve[ing_name]['reasons'])
+            if not has_allergy:
+                issues_to_resolve[ing_name]['reasons'].append(f"diet_{diet}")
 
         substitutions_made = []
         warnings = []
 
-        # Обработка отсутствующих ингредиентов
-        all_issues = missing + problem_allergies + diet_issues
-        for ing in all_issues:
-            is_allergy = ing in problem_allergies
-            is_diet = ing in diet_issues
-            reason = None
+        # Для каждого проблемного ингредиента ищем замену
+        for key, issue_data in issues_to_resolve.items():
+            ing = issue_data['ingredient']
+            reasons = issue_data['reasons']
 
-            if is_allergy:
-                reason = ing.get('allergen')
-            elif is_diet:
-                reason = diet
+            # Определяем основной reason для поиска замены
+            search_reason = None
+            if any('allergy_' in r for r in reasons):
+                for r in reasons:
+                    if r.startswith('allergy_'):
+                        search_reason = r.replace('allergy_', '')
+                        break
+            elif any('diet_' in r for r in reasons):
+                search_reason = diet
+            else:
+                search_reason = None
 
-            subs = self.manager.find_substitutions(ing['name'], reason)
+            # Ищем замены
+            subs = self.manager.find_substitutions(ing['name'], search_reason)
 
             # ИИ: оценка уверенности в замене
             best_sub = None
@@ -280,26 +445,46 @@ class RecipeAdapter:
                     best_sub = sub
 
             if best_sub and best_confidence > 0.5:
-                if is_allergy:
-                    sub_reason = f"аллергия на {ing['allergen']}"
-                elif is_diet:
-                    sub_reason = f"диета {diet}"
-                else:
-                    sub_reason = "нет в наличии"
+                # Формируем описание причины
+                reason_text = []
+                if any('allergy_' in r for r in reasons):
+                    for r in reasons:
+                        if r.startswith('allergy_'):
+                            reason_text.append(f"аллергия на {r.replace('allergy_', '')}")
+                if any('diet_' in r for r in reasons):
+                    reason_text.append(f"диета {diet}")
+                if 'missing' in reasons:
+                    reason_text.append("нет в наличии")
 
                 substitutions_made.append({
                     'original': ing['name'],
                     'alternative': best_sub['alternative'],
-                    'reason': sub_reason,
+                    'reason': ", ".join(reason_text),
                     'note': best_sub.get('note', ''),
-                    'confidence': best_confidence
+                    'confidence': best_confidence,
+                    'ratio': best_sub.get('ratio', 1.0)
                 })
 
-                self._apply_substitution(scaled_ingredients, ing, best_sub, scale_factor)
+                # ПРИМЕНЯЕМ ЗАМЕНУ
+                self._apply_substitution(scaled_ingredients, ing, best_sub, optimal_scale)
             elif best_sub:
-                warnings.append(f"⚠️ Низкая уверенность в замене для {ing['name']}")
+                # Если есть замена, но низкая уверенность, просто предупреждаем
+                if ing['name'] not in MINOR_INGREDIENTS:
+                    warnings.append(f"⚠️ Низкая уверенность в замене для {ing['name']}")
+                else:
+                    warnings.append(f"ℹ️ {ing['name']} отсутствует, но можно приготовить и без него")
             else:
-                warnings.append(f"❌ Нет замены для {ing['name']}")
+                # Если нет замены
+                if ing['name'] in MINOR_INGREDIENTS:
+                    warnings.append(f"ℹ️ {ing['name']} отсутствует, но это не критично")
+                else:
+                    warnings.append(f"❌ Нет замены для {ing['name']}")
+
+        # Добавляем предупреждения для второстепенных ингредиентов, которые просто отсутствуют
+        for ing in missing:
+            if ing['name'] in MINOR_INGREDIENTS and ing['name'] not in [s['original'] for s in substitutions_made]:
+                if not any(warning for warning in warnings if ing['name'] in warning):
+                    warnings.append(f"ℹ️ {ing['name']} отсутствует, но рецепт можно приготовить и без него")
 
         # ИИ: расчет количества порций
         servings = self._calculate_servings(scaled_ingredients)
@@ -309,95 +494,71 @@ class RecipeAdapter:
             'ingredients': scaled_ingredients,
             'missing': missing,
             'short': short,
+            'available': available,
             'excess': excess_info,
             'diet_issues': diet_issues,
+            'allergy_issues': problem_allergies,
             'substitutions': substitutions_made,
             'warnings': warnings,
-            'scale_factor': scale_factor,
+            'scale_factor': optimal_scale,
             'steps': recipe.get('steps', []),
             'servings': servings
         }
 
     def _check_substitution_confidence(self, substitution, ingredient):
-        # ИИ: оценка уверенности в замене на основе анализа
-        confidence = 0.8  # Базовая уверенность
+        # ИИ: оценка уверенности в замене
+        confidence = 0.8
 
-        # ИИ: проверка совместимости единиц измерения
-        unit_compatibility = {
-            'г': ['г', 'кг'],
-            'мл': ['мл', 'л'],
-            'шт': ['шт'],
-            'ст.л': ['ст.л', 'ч.л'],
-            'ч.л': ['ч.л', 'ст.л']
-        }
-
-        # ИИ: анализ совместимости единиц
-        if 'unit' in ingredient and substitution.get('ratio'):
-            ing_unit = ingredient.get('unit', 'шт')
-            sub_units = unit_compatibility.get(ing_unit, [ing_unit])
-
-            if substitution.get('alternative_unit', ing_unit) not in sub_units:
-                confidence -= 0.3  # Понижаем уверенность при несовместимости
-
-        # ИИ: анализ контекста использования
         if 'note' in substitution:
             if 'выпечка' in substitution['note'] and ingredient.get('name') in ['мука', 'яйца']:
-                confidence += 0.1  # Повышаем уверенность для выпечки
+                confidence += 0.1
 
-        # Сохраняем в "модель"
         key = f"{ingredient['name']}->{substitution['alternative']}"
         self.substitution_confidence[key] = confidence
 
         return confidence
 
     def _apply_substitution(self, ingredients, original_ing, substitution, scale_factor):
-        # Применяет замену с корректными единицами измерения
+        # Применяет замену для проблемного ингредиента
 
-        # ИИ: определение правильной единицы измерения для замены
+        # Определяем единицу измерения для замены
         unit_mapping = {
-            # Жидкие продукты
             'молоко': 'мл',
             'вода': 'мл',
             'масло растительное': 'мл',
             'соевое молоко': 'мл',
             'миндальное молоко': 'мл',
-            # Сыпучие продукты
+            'кокосовое молоко': 'мл',
             'мука': 'г',
             'рисовая мука': 'г',
             'миндальная мука': 'г',
             'сахар': 'г',
             'соль': 'г',
             'стевия': 'г',
-            # Поштучные
             'яйца': 'шт',
             'лимон': 'шт'
         }
 
-        # Определяем единицу измерения для замены
         if 'льняная мука' in substitution['alternative']:
-            new_unit = 'ст.л'  # Для льняного яйца используем ст.л
+            new_unit = 'ст.л'
         elif 'сода + уксус' in substitution['alternative']:
-            new_unit = 'ч.л'  # Для разрыхлителя
+            new_unit = 'ч.л'
         elif substitution['alternative'] in unit_mapping:
             new_unit = unit_mapping[substitution['alternative']]
         else:
-            new_unit = original_ing['unit']  # Оставляем оригинальную единицу
+            new_unit = original_ing['unit']
 
-        # ИИ: корректировка количества с учетом единиц измерения
         ratio = substitution.get('ratio', 1.0)
         new_quantity = original_ing['quantity'] * scale_factor * ratio
 
-        # Специальная обработка для разных замен
+        # Специальная обработка
         if original_ing['name'] == 'яйца' and 'льняная мука' in substitution['alternative']:
-            # 1 яйцо = 1 ст.л льняной муки + 3 ст.л воды = 4 ст.л смеси
             new_quantity = original_ing['quantity'] * 4
             new_unit = 'ст.л'
         elif original_ing['name'] == 'разрыхлитель' and 'сода + уксус' in substitution['alternative']:
-            # 1 ч.л разрыхлителя = 0.5 ч.л соды + уксус
             new_quantity = original_ing['quantity'] * 0.5
             new_unit = 'ч.л'
         elif 'масло сливочное' in original_ing['name'] and 'растительное масло' in substitution['alternative']:
-            # Сливочное масло -> растительное (соотношение 0.8)
             new_quantity = original_ing['quantity'] * 0.8
             new_unit = 'мл'
 
@@ -410,21 +571,13 @@ class RecipeAdapter:
         }
 
         # Заменяем ингредиент
-        found = False
         for i, ing in enumerate(ingredients):
             if ing['name'] == original_ing['name']:
                 ingredients[i] = substitute_ingredient
-                found = True
                 break
 
-        if not found:
-            ingredients.append(substitute_ingredient)
-
     def _calculate_servings(self, ingredients):
-        # ИИ: расчет количества порций на основе ингредиентов
-        # Используем машинное обучение для анализа типов блюд
-
-        # ИИ: классификация типа блюда
+        # ИИ: расчет количества порций
         total_weight = 0
         liquid_volume = 0
 
@@ -440,24 +593,14 @@ class RecipeAdapter:
                 else:
                     liquid_volume += ing['quantity']
 
-        # ИИ: определение типа блюда по соотношению жидких и сухих
         if liquid_volume > total_weight * 0.5:
-            servings = int((total_weight + liquid_volume) / 300)  # Супы
+            servings = int((total_weight + liquid_volume) / 300)
         elif total_weight > 1000:
-            servings = int(total_weight / 250)  # Основные блюда
+            servings = int(total_weight / 250)
         else:
-            servings = int(total_weight / 150)  # Закуски/десерты
+            servings = int(total_weight / 150)
 
         return max(1, servings)
-
-    def adapt_custom_recipe(self, recipe_text, user_products_text, allergies=None, diet=None):
-        # Адаптирует пользовательский рецепт
-        ingredients = self._parse_recipe_text(recipe_text)
-        temp_recipe = {
-            'name': 'Ваш рецепт',
-            'ingredients': ingredients
-        }
-        return self.adapt_recipe(temp_recipe, user_products_text, allergies, diet)
 
     def _parse_recipe_text(self, text):
         # Парсит ингредиенты из текста
@@ -493,9 +636,9 @@ with st.sidebar:
     st.header("📖 Как это работает")
     st.info("""
     1. Выбери рецепт из базы или добавь свой
-    2. Укажи, какие продукты у тебя есть (можно указать 0 для отсутствующих)
+    2. Укажи, какие продукты у тебя есть
     3. Добавь информацию об аллергиях
-    4. Получи адаптированный рецепт с заменами!
+    4. Получи адаптированный рецепт!
     """)
 
     st.header("🤖 Где используется ИИ")
@@ -503,9 +646,8 @@ with st.sidebar:
     st.write("• Расчет оптимальных пропорций при избытке")
     st.write("• Анализ совместимости с диетой")
     st.write("• Определение количества порций")
-    st.write("• Классификация типов блюд")
 
-tab1, tab2, tab3 = st.tabs(["📋 Выбрать из базы", "📝 Свой рецепт", "➕ Добавить рецепт"])
+tab1, tab2 = st.tabs(["📋 Выбрать из базы", "➕ Добавить рецепт"])
 
 with tab1:
     st.header("Выбери рецепт из базы")
@@ -543,15 +685,17 @@ with tab1:
         st.markdown("---")
 
         st.subheader("🥫 Какие продукты у тебя есть?")
+        st.caption("Формат: продукт количество единица (например: мука 500г, яйца 3 шт)")
         user_products = st.text_area(
             "Введи продукты через запятую",
-            key="products_tab1"
+            key="products_tab1",
+            height=100
         )
 
         col1, col2 = st.columns(2)
         with col1:
             allergies_input = st.text_input(
-                "Аллергии (через запятую, или оставь пустым)",
+                "Аллергии (через запятую)",
                 placeholder="лактоза, глютен, яйца"
             )
         with col2:
@@ -563,7 +707,7 @@ with tab1:
 
         if st.button("🍳 Адаптировать рецепт", type="primary", use_container_width=True):
             if user_products:
-                allergies = [a.strip() for a in allergies_input.split(',')] if allergies_input else []
+                allergies = [a.strip().lower() for a in allergies_input.split(',')] if allergies_input else []
 
                 with st.spinner("ИИ анализирует рецепт..."):
                     result = adapter.adapt_recipe(
@@ -574,7 +718,7 @@ with tab1:
                     )
 
                 st.markdown("---")
-                st.markdown(f"## 🍳 {result['recipe_name']} (адаптированный)")
+                st.markdown(f"## 🍳 {result['recipe_name']}")
 
                 # Показываем порции
                 st.markdown(f"### 👥 Примерно на {result['servings']} персон")
@@ -583,20 +727,27 @@ with tab1:
                 if result['scale_factor'] != 1.0:
                     if result['scale_factor'] < 1.0:
                         st.info(f"📏 **Рецепт уменьшен на {int((1 - result['scale_factor']) * 100)}%**")
+                    else:
+                        st.info(f"📏 **Рецепт увеличен в {result['scale_factor']:.1f} раз**")
 
-                # Показываем избыток продуктов и увеличение порций
+                # Показываем избыток продуктов
                 if result['excess']:
-                    with st.expander("📈 Обнаружен избыток продуктов - рецепт оптимизирован"):
+                    with st.expander("📈 Обнаружен избыток продуктов - рецепт увеличен"):
                         for e in result['excess']:
-                            st.write(f"• {e['name']}: было {e['current']}{e['unit']}, "
-                                     f"увеличено до {e['optimal']}{e['unit']} "
-                                     f"(в {e['factor']:.1f} раз)")
+                            st.write(f"• {e['name']}: было {e['current']:.1f}{e['unit']}, "
+                                     f"увеличено до {e['optimal']:.1f}{e['unit']}")
 
                 if result['short']:
                     with st.expander("📉 Продуктов меньше нормы"):
                         for s in result['short']:
                             st.write(
                                 f"• {s['name']}: нужно {s['quantity']}{s['unit']}, есть {s['user_quantity']}{s['unit']}")
+
+                # Показываем аллергии
+                if result['allergy_issues']:
+                    with st.expander("⚠️ Аллергены в рецепте"):
+                        for a in result['allergy_issues']:
+                            st.write(f"• {a['name']} содержит аллерген: {a['allergen']}")
 
                 # Показываем проблемы с диетой
                 if result['diet_issues']:
@@ -606,12 +757,12 @@ with tab1:
                             if d.get('alternative'):
                                 st.write(f"  Рекомендуемая замена: {d['alternative']}")
 
-                # Показываем замены
+                # Показываем произведенные замены
                 if result['substitutions']:
                     with st.expander("🔄 Произведенные замены"):
                         for sub in result['substitutions']:
-                            st.write(f"• **{sub['original']}** → **{sub['alternative']}** ({sub['reason']})")
-                            st.caption(f"  Уверенность ИИ: {int(sub.get('confidence', 0.8) * 100)}%")
+                            st.write(f"• **{sub['original']}** → **{sub['alternative']}**")
+                            st.caption(f"  Причина: {sub['reason']}")
                             if sub['note']:
                                 st.caption(f"  ⓘ {sub['note']}")
 
@@ -645,111 +796,6 @@ with tab1:
                 st.error("Введи продукты!")
 
 with tab2:
-    st.header("Введи свой рецепт")
-
-    st.info("Введи каждый ингредиент в формате: название количество единица")
-
-    ingredients_text = st.text_area(
-        "Пример:\n"
-        "мука 200г,\n"
-        "яйца 2 шт,\n"
-        "молоко 100мл",
-        height=100
-    )
-
-    custom_recipe = st.text_area("Рецепт", height=150, key="custom_recipe")
-
-    st.subheader("🥫 Какие продукты у тебя есть?")
-    user_products_custom = st.text_area(
-        "Введи продукты через запятую",
-        key="products_tab2"
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        allergies_custom = st.text_input(
-            "Аллергии (через запятую)",
-            placeholder="лактоза, глютен",
-            key="allergies_tab2"
-        )
-    with col2:
-        diet_custom = st.selectbox(
-            "Диета",
-            ["Нет", "Веган", "Вегетарианец", "Без сахара", "Кето"],
-            key="diet_tab2"
-        )
-
-    if st.button("🍳 Адаптировать мой рецепт", type="primary", use_container_width=True):
-        if custom_recipe and user_products_custom:
-            allergies = [a.strip() for a in allergies_custom.split(',')] if allergies_custom else []
-
-            with st.spinner("ИИ анализирует рецепт..."):
-                result = adapter.adapt_custom_recipe(
-                    custom_recipe,
-                    user_products_custom,
-                    allergies,
-                    diet_custom
-                )
-
-            st.markdown("---")
-            st.markdown(f"## 🍳 {result['recipe_name']} (адаптированный)")
-
-            # Показываем порции
-            st.markdown(f"### 👥 Примерно на {result['servings']} персон")
-
-            if result['scale_factor'] != 1.0:
-                if result['scale_factor'] < 1.0:
-                    st.info(f"📏 **Рецепт уменьшен на {int((1 - result['scale_factor']) * 100)}%**")
-
-            if result['excess']:
-                with st.expander("📈 Обнаружен избыток продуктов - рецепт оптимизирован"):
-                    for e in result['excess']:
-                        st.write(f"• {e['name']}: было {e['current']}{e['unit']}, "
-                                 f"увеличено до {e['optimal']}{e['unit']} "
-                                 f"(в {e['factor']:.1f} раз)")
-
-            if result['short']:
-                with st.expander("📉 Продуктов меньше нормы"):
-                    for s in result['short']:
-                        st.write(
-                            f"• {s['name']}: нужно {s['quantity']}{s['unit']}, есть {s['user_quantity']}{s['unit']}")
-
-            if result['diet_issues']:
-                with st.expander("🥗 Проблемы с диетой"):
-                    for d in result['diet_issues']:
-                        st.write(f"• {d['name']} не соответствует диете {d['diet']}")
-                        if d.get('alternative'):
-                            st.write(f"  Рекомендуемая замена: {d['alternative']}")
-
-            if result['substitutions']:
-                with st.expander("🔄 Произведенные замены"):
-                    for sub in result['substitutions']:
-                        st.write(f"• **{sub['original']}** → **{sub['alternative']}** ({sub['reason']})")
-                        st.caption(f"  Уверенность ИИ: {int(sub.get('confidence', 0.8) * 100)}%")
-                        if sub['note']:
-                            st.caption(f"  ⓘ {sub['note']}")
-
-            st.markdown("### 🥣 Ингредиенты после адаптации:")
-            for ing in result['ingredients']:
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    if ing.get('is_substitute'):
-                        st.markdown(f"**{ing['name']}** 🔄")
-                    elif ing.get('optimized'):
-                        st.markdown(f"**{ing['name']}** ⬆️")
-                    else:
-                        st.markdown(f"**{ing['name']}**")
-                with col2:
-                    st.markdown(f"{ing['quantity']}{ing['unit']}")
-
-            if result['warnings']:
-                with st.expander("⚠️ Предупреждения"):
-                    for w in result['warnings']:
-                        st.warning(w)
-        else:
-            st.error("Заполни рецепт и продукты!")
-
-with tab3:
     st.header("➕ Добавить новый рецепт в базу")
 
     with st.form("add_recipe_form"):
@@ -761,20 +807,19 @@ with tab3:
         )
 
         st.subheader("Ингредиенты")
-        st.info("Введи каждый ингредиент в формате: название количество единица")
+        st.info("Введи каждый ингредиент с новой строки в формате: название количество единица")
 
         ingredients_text = st.text_area(
-            "Пример:"
-            "мука 200г,"
-            "яйца 2 шт,"
-            "молоко 100мл",
-            height=100
+            "Ингредиенты",
+            placeholder="мука 200г\nяйца 2 шт\nмолоко 100мл",
+            height=150
         )
 
         st.subheader("Шаги приготовления")
         steps_text = st.text_area(
             "Каждый шаг с новой строки",
-            height=100
+            placeholder="1. Смешать сухие ингредиенты\n2. Добавить яйца и молоко\n3. Выпекать 30 мин при 180°C",
+            height=150
         )
 
         col1, col2 = st.columns(2)
@@ -783,13 +828,17 @@ with tab3:
         with col2:
             difficulty = st.selectbox("Сложность", ["легкая", "средняя", "сложная"])
 
-        submitted = st.form_submit_button("💾 Сохранить рецепт", type="primary" ,use_container_width=True)
+        submitted = st.form_submit_button("💾 Сохранить рецепт", type="primary", use_container_width=True)
 
         if submitted:
             if recipe_name and ingredients_text:
-                # Парсим ингредиенты
                 ingredients = []
                 for line in ingredients_text.strip().split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if ',' in line:
+                        line = line.replace(',', '')
                     match = re.search(r'([а-яА-Я\s]+?)\s+(\d+[.,]?\d*)\s*(г|мл|шт|ст\.л|ч\.л|кг|л)?', line)
                     if match:
                         ingredients.append({
@@ -797,21 +846,25 @@ with tab3:
                             'quantity': float(match.group(2).replace(',', '.')),
                             'unit': match.group(3) if match.group(3) else 'шт'
                         })
+                    else:
+                        st.warning(f"Не удалось распознать ингредиент: {line}")
 
-                # Парсим шаги
                 steps = [s.strip() for s in steps_text.strip().split('\n') if s.strip()]
 
-                new_recipe = {
-                    'name': recipe_name,
-                    'category': category,
-                    'ingredients': ingredients,
-                    'steps': steps,
-                    'time': time,
-                    'difficulty': difficulty
-                }
+                if ingredients:
+                    new_recipe = {
+                        'name': recipe_name,
+                        'category': category,
+                        'ingredients': ingredients,
+                        'steps': steps,
+                        'time': time,
+                        'difficulty': difficulty
+                    }
 
-                recipe_id = adapter.manager.add_recipe(new_recipe)
-                st.success(f"✅ Рецепт '{recipe_name}' добавлен в базу с ID {recipe_id}!")
+                    recipe_id = adapter.manager.add_recipe(new_recipe)
+                    st.success(f"✅ Рецепт '{recipe_name}' добавлен в базу с ID {recipe_id}!")
+                else:
+                    st.error("Не удалось распознать ингредиенты! Проверь формат.")
             else:
                 st.error("Заполни название и ингредиенты!")
 
