@@ -1,71 +1,80 @@
 # Модуль для анализа совместимости ингредиентов с диетами
 # ИСПОЛЬЗОВАНИЕ ИИ: анализ пищевых ограничений и поиск альтернатив
 
+import json
+import os
+
+
 class DietAnalyzer:
     # Анализатор совместимости продуктов с различными диетами
-    # ИИ: база знаний о диетах и продуктах
 
     def __init__(self):
         # ИИ: база знаний ограничений для разных диет
-
         self.diet_restrictions = {
             "Кето": {
                 "запрещено": [
                     "сахар", "мука", "фрукты", "крупы",
                     "хлеб", "макароны", "картофель", "рис",
-                    "банан", "виноград", "сладкие фрукты"
+                    "банан", "виноград", "сладкие фрукты",
+                    "мед", "конфеты", "сладкое",
+
+                    # Бобовые
+                    "фасоль", "чечевица", "горох", "горошек",
+                    "нут", "бобы", "соевые бобы", "маш",
+                    "чечевица красная", "чечевица зеленая",
+                    "консервированный горох", "консервированная фасоль",
+                    "кукуруза", "консервированная кукуруза"
                 ],
                 "разрешено": [
                     "мясо", "рыба", "яйца", "сыр",
                     "орехи", "авокадо", "растительное масло",
-                    "сливочное масло", "сливки"
+                    "сливочное масло", "сливки", "миндальная мука",
+                    "кокосовая мука", "стевия", "эритрит",
+                    "грибы", "цветная капуста", "брокколи",
+                    "тофу", "семена тыквы", "кабачки", "цукини"
                 ]
             },
-
-
             "Веган": {
                 "запрещено": [
                     "молоко", "яйца", "масло сливочное", "творог",
                     "сыр", "кефир", "йогурт", "сметана", "сливки",
-                    "мед", "желатин", "курица", "говядина", "рыба"
+                    "мед", "желатин", "курица", "говядина", "рыба",
+                    "мясо", "морепродукты", "майонез", "кетчуп", "колбаса", "сосиски",
+                    "ветчина", "бекон"
                 ],
                 "разрешено": [
                     "овощи", "фрукты", "орехи", "бобовые",
                     "растительное масло", "тофу", "соевое молоко",
-                    "миндальное молоко", "кокосовое молоко"
+                    "миндальное молоко", "кокосовое молоко",
+                    "льняная мука", "рисовая мука", "миндальная мука"
                 ]
             },
-
-
             "Вегетарианец": {
                 "запрещено": [
                     "мясо", "рыба", "курица", "говядина",
-                    "свинина", "морепродукты"
+                    "свинина", "морепродукты", "колбаса",
+                    "сосиски", "ветчина", "бекон"
                 ],
                 "разрешено": [
                     "молоко", "яйца", "сыр", "творог",
-                    "овощи", "фрукты", "орехи"
+                    "овощи", "фрукты", "орехи", "тофу",
+                    "сейтан", "бобовые"
                 ]
             },
-
-
             "Без сахара": {
                 "запрещено": [
                     "сахар", "мед", "кленовый сироп", "патока",
                     "конфеты", "шоколад", "варенье", "джем",
-                    "сладкие газировки", "соки с сахаром"
+                    "сладкие газировки", "майонез", "кетчуп", "соки с сахаром"
                 ],
                 "разрешено": [
                     "стевия", "эритрит", "фрукты в умеренных количествах"
                 ]
             },
-
-
-
             "без глютена": {
                 "запрещено": [
                     "мука пшеничная", "мука ржаная", "мука ячменная",
-                    "манка", "кус-кус", "булгур", "пшеница"
+                    "манка", "кус-кус", "булгур", "соевый соус", "пшеница"
                 ],
                 "разрешено": [
                     "рисовая мука", "кукурузная мука", "гречневая мука",
@@ -86,102 +95,39 @@ class DietAnalyzer:
             }
         }
 
-        # ИИ: база знаний альтернатив для запрещенных продуктов
-        self.alternatives_database = {
-            "сахар": {
-                "стевия": "1 ч.л сахара = щепотка стевии",
-                "эритрит": "1:1.3 (эритрита нужно в 1.3 раза больше)",
-                "сироп топинамбура": "1:1",
-                "финики измельченные": "100г сахара = 150г фиников"
-            },
-            "мука": {
-                "миндальная мука": "1:1 (подходит для кето)",
-                "рисовая мука": "1:1 (без глютена)",
-                "кокосовая мука": "1:0.3 + добавить яйцо",
-                "гречневая мука": "1:1 (без глютена)"
-            },
-            "молоко": {
-                "соевое молоко": "1:1 (веган)",
-                "миндальное молоко": "1:1 (веган, кето)",
-                "кокосовое молоко": "1:0.7 (веган, кето)",
-                "овсяное молоко": "1:1 (веган)"
-            },
-            "яйца": {
-                "льняная мука": "1 яйцо = 1ст.л муки + 3ст.л воды (веган)",
-                "банан": "1 яйцо = 0.5 банана (для выпечки, веган)",
-                "аквафаба": "1 яйцо = 3ст.л жидкости от нута (веган)"
-            },
-            "масло сливочное": {
-                "растительное масло": "100г = 80мл (веган, кето)",
-                "кокосовое масло": "1:1 (веган, кето)",
-                "оливковое масло": "1:0.9 (веган, кето)"
-            },
-            "творог": {
-                "тофу": "1:1 (веган)",
-                "соевый йогурт": "1:1 (веган, кето)",
-                "Рикоттта, маскарпоне или творож.сыр": "1:1 (кето)",
-                "Творож. сыр": "1:1 (кето)"
+        # Загружаем замены из substitutions.json
+        self.substitutions = self._load_substitutions()
 
-            },
-            "сыр": {
-                "тофу": "1:1 (веган)",
-                "кокосовый сыр": "1:1 (веган, кето)",
-                "ореховый сыр": "1:1 (веган)"
-            },
-            "мед": {
-                "кленовый сироп": "1:1 (веган)",
-                "сироп агавы": "1:1 (веган)",
-                "стевия": "по вкусу (веган, кето)"
-            },
-            "картофель": {
-                "цветная капуста или брокколи": "1:1 (кето)",
-                "корень сельдерея": "1:1 (кето)",
-                "кабачки или цукини": "1:1 (кето)"
-            },
-            "рис": {
-                "цветная капуста или брокколи": "измельченная сырая, 1:1 (кето)",
-                "киноа": "1:1",
-                "гречка": "1:1",
-                "ширатаки": "1:1 (кето)"
-            }
-        }
-
-        # ИИ: маппинг продуктов на категории для умного поиска
-        self.product_categories = {
-            "молоко": "молочные",
-            "яйца": "яйца",
-            "масло сливочное": "молочные",
-            "творог": "молочные",
-            "сыр": "молочные",
-            "сахар": "подсластители",
-            "мед": "подсластители",
-            "мука": "мучные",
-            "мясо": "мясные",
-            "рыба": "рыбные",
-            "картофель": "овощи крахмалистые",
-            "рис": "крупы",
-            "фрукты": "фрукты"
-        }
+    def _load_substitutions(self):
+        """Загружает замены из файла substitutions.json"""
+        try:
+            subs_file = "data/substitutions.json"
+            if os.path.exists(subs_file):
+                with open(subs_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data.get("substitutions", [])
+            return []
+        except:
+            return []
 
     def check_compatibility(self, ingredient, diet):
         # ИИ: проверка совместимости ингредиента с диетой
-        # Возвращает (совместим, причина, альтернативы)
 
         if not diet or diet == "Нет":
             return True, None, None
 
         ing_name = ingredient['name'].lower()
 
-        # Ищем в базе ограничений
+        # Дополнительная нормализация для консервированных продуктов
+        if 'консервированный' in ing_name or 'консервированная' in ing_name:
+            ing_name = ing_name.replace('консервированный', '').replace('консервированная', '').strip()
+
         if diet in self.diet_restrictions:
             restrictions = self.diet_restrictions[diet]
 
-            # Проверяем по точному совпадению
             if 'запрещено' in restrictions:
                 for forbidden in restrictions['запрещено']:
-                    # Проверяем вхождение (чтобы найти "мука" в "мука пшеничная")
                     if forbidden.lower() in ing_name or ing_name in forbidden.lower():
-                        # ИИ: ищем альтернативы
                         alternatives = self.find_alternatives(ing_name, diet)
                         return False, f"Запрещено на диете {diet}", alternatives
 
@@ -191,44 +137,33 @@ class DietAnalyzer:
         # ИИ: поиск альтернатив для ингредиента с учетом диеты
         alternatives = []
 
-        # Ищем в базе альтернатив
-        for key, alts in self.alternatives_database.items():
-            if key in ingredient_name or ingredient_name in key:
-                for alt_name, alt_desc in alts.items():
-                    # Проверяем, подходит ли альтернатива для диеты
-                    if diet:
-                        # Быстрая проверка совместимости альтернативы с диетой
-                        alt_compatible = True
+        # Загружаем substitutions.json
+        import json
+        import os
 
-                        # Проверяем, не запрещена ли альтернатива на этой диете
-                        if diet in self.diet_restrictions:
-                            restrictions = self.diet_restrictions[diet]
-                            if 'запрещено' in restrictions:
-                                for forbidden in restrictions['запрещено']:
-                                    if forbidden.lower() in alt_name.lower():
-                                        alt_compatible = False
-                                        break
+        subs_file = "data/substitutions.json"
+        if os.path.exists(subs_file):
+            with open(subs_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                substitutions = data.get("substitutions", [])
 
-                        if alt_compatible:
+                for sub in substitutions:
+                    if sub["ingredient"] == ingredient_name:
+                        condition = sub.get("condition", "")
+                        if diet and condition == diet:
                             alternatives.append({
-                                'name': alt_name,
-                                'description': alt_desc,
-                                'type': 'прямая замена'
+                                'name': sub['alternative'],
+                                'description': sub.get('note', f"Замена: {sub['alternative']}"),
+                                'type': 'прямая замена',
+                                'ratio': sub.get('ratio', 1.0)
                             })
-                    else:
-                        alternatives.append({
-                            'name': alt_name,
-                            'description': alt_desc,
-                            'type': 'прямая замена'
-                        })
-
-        # Если нет прямых замен, ищем по категориям
-        if not alternatives:
-            category_alts = self._find_by_category(ingredient_name, diet)
-            alternatives.extend(category_alts)
-
-        # ИИ: сортировка по релевантности
-        alternatives = self._rank_alternatives(alternatives, ingredient_name)
+                        elif not diet and condition in ["всегда", "любая"]:
+                            alternatives.append({
+                                'name': sub['alternative'],
+                                'description': sub.get('note', f"Замена: {sub['alternative']}"),
+                                'type': 'прямая замена',
+                                'ratio': sub.get('ratio', 1.0)
+                            })
 
         return alternatives
 
@@ -236,9 +171,25 @@ class DietAnalyzer:
         # ИИ: поиск альтернатив по категории продукта
         alternatives = []
 
-        # Определяем категорию продукта
+        product_categories = {
+            "молоко": "молочные",
+            "яйца": "яйца",
+            "масло сливочное": "молочные",
+            "творог": "молочные",
+            "сыр": "молочные",
+            "сливки": "молочные",
+            "сметана": "молочные",
+            "сахар": "подсластители",
+            "мед": "подсластители",
+            "мука": "мучные",
+            "мясо": "мясные",
+            "рыба": "рыбные",
+            "картофель": "овощи крахмалистые",
+            "рис": "крупы"
+        }
+
         category = None
-        for prod, cat in self.product_categories.items():
+        for prod, cat in product_categories.items():
             if prod in ingredient_name or ingredient_name in prod:
                 category = cat
                 break
@@ -250,7 +201,6 @@ class DietAnalyzer:
                 {"name": "кокосовое молоко", "description": "1:0.7 (подходит для веган, кето)", "type": "категория"},
                 {"name": "тофу", "description": "1:1 (для творога/сыра)", "type": "категория"}
             ]
-            # Фильтруем по диете
             if diet:
                 for alt in alts:
                     alt_compatible = True
@@ -293,31 +243,25 @@ class DietAnalyzer:
 
     def _rank_alternatives(self, alternatives, original_ingredient):
         # ИИ: ранжирование альтернатив по релевантности
-
         ranked = []
         for alt in alternatives:
             score = 100
 
-            # Повышаем score для прямых замен
             if alt.get('type') == 'прямая замена':
                 score += 20
 
-            # Понижаем для менее точных
             if alt.get('type') == 'категория':
                 score -= 10
 
-            # Повышаем для альтернатив, которые явно подходят под диету
             if 'кето' in alt.get('description', '') or 'веган' in alt.get('description', ''):
                 score += 15
 
             alt['relevance_score'] = score
             ranked.append(alt)
 
-        # Сортируем по score
         return sorted(ranked, key=lambda x: x['relevance_score'], reverse=True)
 
     def get_diet_info(self, diet):
-        # Возвращает информацию о диете
         if diet in self.diet_restrictions:
             return self.diet_restrictions[diet]
         return None
@@ -354,12 +298,10 @@ class DietAnalyzer:
 
 # Функция для обратной совместимости с основным кодом
 def analyze_diet_compatibility(ingredient, diet):
-    # Обертка для вызова из основного кода
     analyzer = DietAnalyzer()
     compatible, reason, alternatives = analyzer.check_compatibility(ingredient, diet)
 
     if not compatible and alternatives:
-        # Формируем строку с альтернативами
         alt_text = " | ".join([f"{a['name']} ({a['description']})" for a in alternatives[:2]])
         return False, alt_text
 

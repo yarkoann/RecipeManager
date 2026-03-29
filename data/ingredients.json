@@ -69,6 +69,82 @@
       "category": "сладкое",
       "allergens": [],
       "unit": "г"
+    },
+    {
+      "name": "колбаса",
+      "category": "мясные",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "сосиски",
+      "category": "мясные",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "ветчина",
+      "category": "мясные",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "бекон",
+      "category": "мясные",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "майонез",
+      "category": "соусы",
+      "allergens": [
+        "яйца"
+      ],
+      "unit": "г"
+    },
+    {
+      "name": "кетчуп",
+      "category": "соусы",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "соевый соус",
+      "category": "соусы",
+      "allergens": [
+        "глютен"
+      ],
+      "unit": "мл"
+    },
+    {
+      "name": "горох",
+      "category": "бобовые",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "фасоль",
+      "category": "бобовые",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "чечевица",
+      "category": "бобовые",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "нут",
+      "category": "бобовые",
+      "allergens": [],
+      "unit": "г"
+    },
+    {
+      "name": "кукуруза",
+      "category": "овощи",
+      "allergens": [],
+      "unit": "г"
     }
   ]
 }
