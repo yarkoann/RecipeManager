@@ -84,18 +84,17 @@ class RecipeManager:
         # Ищет замены для ингредиента
         result = []
         for sub in self.substitutions:
-            if sub["ingredient"] == ingredient:
+            # Проверяем вхождение (чтобы "горох" подходило для "горох консервированный")
+            if sub["ingredient"] in ingredient or ingredient in sub["ingredient"]:
                 # Если reason не указан - возвращаем все замены
                 if reason is None:
                     result.append(sub)
                 elif reason and sub.get("condition") == reason:
                     result.append(sub)
-                elif not reason and sub.get("condition") in ["всегда", "любая"]:
-                    result.append(sub)
-                # Добавляем проверку для диет с большой буквы
                 elif reason and sub.get("condition").lower() == reason.lower():
                     result.append(sub)
-        print(f"find_substitutions: ingredient={ingredient}, reason={reason}, found={len(result)}")  # Отладка
+                elif not reason and sub.get("condition") in ["всегда", "любая"]:
+                    result.append(sub)
         return result
 
 
@@ -559,6 +558,8 @@ class RecipeAdapter:
             'steps': recipe.get('steps', []),
             'servings': servings
         }
+
+    
 
     def _check_substitution_confidence(self, substitution, ingredient):
         # ИИ: оценка уверенности в замене
