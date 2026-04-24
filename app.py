@@ -66,7 +66,12 @@ class RecipeManager:
         return [r for r in self.recipes if query in r["name"].lower()]
 
     def add_recipe(self, recipe):
-        # Добавляет новый рецепт
+        # Добавляет новый рецепт, проверяя дубликаты
+        # Проверяем, нет ли рецепта с таким же названием
+        for existing in self.recipes:
+            if existing.get('name', '').lower() == recipe.get('name', '').lower():
+                return None  # Рецепт уже существует
+
         new_id = max([r.get("id", 0) for r in self.recipes] + [0]) + 1
         recipe["id"] = new_id
         self.recipes.append(recipe)
@@ -197,13 +202,17 @@ class RecipeAdapter:
         return optimal_scale
 
     def _optimize_portions(self, ingredients, user_dict, scale_factor):
-        """
-        ИИ: оптимизация рецепта с единым коэффициентом масштабирования
-        """
+
         optimized_ingredients = []
         excess_info = []
 
         for ing in ingredients:
+            if ing.get('by_taste', False):
+                optimized_ingredients.append({
+                    **ing,
+                    'by_taste': True
+                })
+                continue
             new_quantity = ing['quantity'] * scale_factor
 
             # Проверяем, есть ли у пользователя этот продукт в достаточном количестве
@@ -287,46 +296,141 @@ class RecipeAdapter:
         CORE_INGREDIENTS = ['мука', 'яйца', 'молоко', 'творог', 'мясо', 'рыба', 'крупа', 'рис', 'колбаса', 'курица']
         MINOR_INGREDIENTS = ['разрыхлитель', 'сода', 'соль', 'перец', 'специи', 'ванилин']
 
-        base_scale = 1.0
+
+        scale_factor = 1.0
+
+        # Если пользователь вводил продукты, рассчитываем масштаб
+        if has_user_products:
+            # Сначала проверяем недостаток (уменьшение)
+            min_scale = 1.0
+            for ing in recipe_ingredients:
+                if ing['name'] in user_dict:
+                    user_q = user_dict[ing['name']]['quantity']
+                    if user_q is not None and user_q > 0 and user_q < ing['quantity']:
+                        # Не хватает - нужно уменьшить
+                        scale_candidate = user_q / ing['quantity']
+                        if scale_candidate < min_scale:
+                            min_scale = scale_candidate
+
+            scale_factor = min_scale
+
+            # Затем проверяем избыток (увеличение)
+            max_scale = scale_factor
+            for ing in recipe_ingredients:
+                if ing['name'] in user_dict:
+                    user_q = user_dict[ing['name']]['quantity']
+                    if user_q is not None and user_q > 0 and user_q > ing['quantity'] * scale_factor:
+                        # Есть избыток - можно увеличить
+                        scale_candidate = user_q / ing['quantity']
+                        if scale_candidate > max_scale:
+                            max_scale = scale_candidate
+
+            scale_factor = max_scale
+
+        scaled_ingredients = []
+        excess_info = []
 
         for ing in recipe_ingredients:
-            # Проверка совместимости с диетой
-            if diet and diet != "Нет":
-                compatible, alternative = self._analyze_diet_compatibility(ing, diet)
-                if not compatible:
-                    diet_issues.append({
-                        **ing,
-                        'diet': diet,
-                        'alternative': alternative
-                    })
 
+            # Ингредиенты "по вкусу" или "по желанию" не масштабируем
+            if ing.get('by_taste', False):
+                scaled_ingredients.append({
+                    **ing,
+                    'quantity': None,
+                    'unit': '',
+                    'by_taste': True
+                })
+                continue
+
+            if 'quantity' not in ing or ing['quantity'] is None:
+                scaled_ingredients.append(ing)
+                continue
+
+
+            new_quantity = ing['quantity'] * scale_factor
+
+            # Проверяем, есть ли у пользователя этот продукт
             if ing['name'] in user_dict:
                 user_q = user_dict[ing['name']]['quantity']
 
                 if user_q is None:
-                    available.append(ing)
+                    # Количество не указано - используем рассчитанное
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': round(new_quantity, 1)
+                    })
                 elif user_q == 0:
+                    # Явно указано 0
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': round(new_quantity, 1),
+                        'missing': True
+                    })
                     explicitly_missing.append(ing)
                     missing.append(ing)
-                elif user_q < ing['quantity']:
+                elif user_q >= new_quantity:
+                    # Есть достаточно или больше
+                    if user_q > new_quantity * 1.05:
+                        excess_info.append({
+                            'name': ing['name'],
+                            'recipe_needs': round(new_quantity, 1),
+                            'user_has': user_q,
+                            'excess': round(user_q - new_quantity, 1),
+                            'unit': ing['unit']
+                        })
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': round(new_quantity, 1)
+                    })
+                    available.append(ing)
+                else:  # user_q > 0 and user_q < new_quantity
+                    # Есть, но меньше чем нужно
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': user_q,
+                        'limited': True,
+                        'original_quantity': round(new_quantity, 1)
+                    })
                     short.append({
                         **ing,
                         'user_quantity': user_q,
                         'shortage': ing['quantity'] - user_q
                     })
-                    scale_from_this = user_q / ing['quantity']
-                    if scale_from_this < base_scale:
-                        base_scale = scale_from_this
-                else:
-                    available.append(ing)
             else:
-                # Если пользователь не вводил продукты, считаем что продукт есть
-                if not has_user_products:
-                    available.append(ing)
-                else:
+                # Продукта нет в списке пользователя
+                if has_user_products:
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': round(new_quantity, 1),
+                        'missing': True
+                    })
                     missing.append(ing)
+                else:
+                    # Пользователь не вводил продукты - считаем что всё есть
+                    scaled_ingredients.append({
+                        **ing,
+                        'quantity': round(ing['quantity'], 1)
+                    })
+                    available.append(ing)
 
-        # Проверка аллергий
+
+        for ing in recipe_ingredients:
+            if diet and diet != "Нет":
+                compatible, alternative = self._analyze_diet_compatibility(ing, diet)
+                if not compatible:
+                    # Проверяем, не добавлен ли уже
+                    already_added = False
+                    for di in diet_issues:
+                        if di['name'] == ing['name']:
+                            already_added = True
+                            break
+                    if not already_added:
+                        diet_issues.append({
+                            **ing,
+                            'diet': diet,
+                            'alternative': alternative
+                        })
+
         problem_allergies = []
         if processed_allergies:
             for ing in recipe_ingredients:
@@ -346,69 +450,17 @@ class RecipeAdapter:
                                     'info': ing_info
                                 })
 
-        # Расчет оптимального масштаба - ТОЛЬКО если пользователь вводил продукты
-        optimal_scale = 1.0
-        if has_user_products:
-            optimal_scale = base_scale
-
-            for ing in recipe_ingredients:
-                if ing['name'] in user_dict:
-                    user_q = user_dict[ing['name']]['quantity']
-                    if user_q is not None and user_q > 0 and user_q > ing['quantity'] * optimal_scale:
-                        potential_scale = user_q / ing['quantity']
-                        if potential_scale > optimal_scale:
-                            optimal_scale = potential_scale
-
-        # Применяем масштабирование
-        scaled_ingredients = []
-        excess_info = []
-
-        for ing in recipe_ingredients:
-            new_quantity = ing['quantity'] * optimal_scale
-
-            if ing['name'] in user_dict:
-                user_q = user_dict[ing['name']]['quantity']
-
-                if user_q is None:
-                    scaled_ingredients.append({
-                        **ing,
-                        'quantity': round(new_quantity, 1)
-                    })
-                elif user_q > 0 and user_q >= new_quantity:
-                    if user_q > new_quantity * 1.05:
-                        excess_info.append({
-                            'name': ing['name'],
-                            'recipe_needs': round(new_quantity, 1),
-                            'user_has': user_q,
-                            'excess': round(user_q - new_quantity, 1),
-                            'unit': ing['unit']
-                        })
-                    scaled_ingredients.append({
-                        **ing,
-                        'quantity': round(new_quantity, 1)
-                    })
-                elif user_q > 0 and user_q < new_quantity:
-                    scaled_ingredients.append({
-                        **ing,
-                        'quantity': user_q,
-                        'limited': True,
-                        'original_quantity': round(new_quantity, 1)
-                    })
-                else:
-                    scaled_ingredients.append({
-                        **ing,
-                        'quantity': round(new_quantity, 1),
-                        'missing': True
-                    })
-            else:
-                # Если пользователь не вводил продукты, используем оригинальное количество
-                scaled_ingredients.append({
-                    **ing,
-                    'quantity': round(ing['quantity'], 1)
-                })
-
-        # Собираем проблемы для замены
         issues_to_resolve = {}
+
+        # Добавляем проблемы с диетой
+        for ing in diet_issues:
+            ing_name = ing['name']
+            if ing_name not in issues_to_resolve:
+                issues_to_resolve[ing_name] = {
+                    'ingredient': ing,
+                    'reasons': []
+                }
+            issues_to_resolve[ing_name]['reasons'].append(f"diet_{diet}")
 
         # Добавляем аллергии
         for ing in problem_allergies:
@@ -420,19 +472,6 @@ class RecipeAdapter:
                 }
             issues_to_resolve[ing_name]['reasons'].append(f"allergy_{ing['allergen']}")
 
-        # Добавляем проблемы с диетой - ВАЖНО: добавляем ВСЕ diet_issues
-        for ing in diet_issues:
-            ing_name = ing['name']
-            if ing_name not in issues_to_resolve:
-                issues_to_resolve[ing_name] = {
-                    'ingredient': ing,
-                    'reasons': []
-                }
-            # Проверяем, нет ли уже аллергии на этот продукт
-            has_allergy = any(f"allergy_" in r for r in issues_to_resolve[ing_name]['reasons'])
-            if not has_allergy:
-                issues_to_resolve[ing_name]['reasons'].append(f"diet_{diet}")
-
         # Добавляем явно отсутствующие (указанные с 0)
         for ing in explicitly_missing:
             ing_name = ing['name']
@@ -443,30 +482,10 @@ class RecipeAdapter:
                 }
                 issues_to_resolve[ing_name]['reasons'].append('explicitly_missing')
 
-        # Добавляем также продукты, которые есть в наличии, но не подходят по диете
-        # (если пользователь не вводил продукты, но указал диету)
-        for ing in recipe_ingredients:
-            ing_name = ing['name']
-            # Проверяем, не входит ли этот ингредиент в diet_issues
-            is_in_diet_issues = False
-            for di in diet_issues:
-                if di['name'] == ing_name:
-                    is_in_diet_issues = True
-                    break
-
-            if is_in_diet_issues and ing_name not in issues_to_resolve:
-                issues_to_resolve[ing_name] = {
-                    'ingredient': ing,
-                    'reasons': []
-                }
-                issues_to_resolve[ing_name]['reasons'].append(f"diet_{diet}")
-
-        print(f"DEBUG: issues_to_resolve = {list(issues_to_resolve.keys())}")  # Временный отладчик
 
         substitutions_made = []
         alternatives_for_display = []
 
-        # Ищем замены для проблемных ингредиентов
         for key, issue_data in issues_to_resolve.items():
             ing = issue_data['ingredient']
             reasons = issue_data['reasons']
@@ -479,16 +498,12 @@ class RecipeAdapter:
                         search_reason = r.replace('allergy_', '')
                         break
             elif any('diet_' in r for r in reasons):
-                search_reason = diet  # Используем оригинальное название диеты
+                search_reason = diet
             elif 'explicitly_missing' in reasons:
                 search_reason = None
 
-            print(f"Поиск замены для: {ing['name']}, причина: {search_reason}")  # Отладка
-
             # Ищем замены
             subs = self.manager.find_substitutions(ing['name'], search_reason)
-
-            print(f"Найдено замен: {len(subs)}")  # Отладка
 
             # Собираем все подходящие альтернативы
             ingredient_alternatives = []
@@ -536,9 +551,9 @@ class RecipeAdapter:
                 })
 
                 # Применяем замену
-                self._apply_substitution(scaled_ingredients, ing, best_sub, 1.0)
+                self._apply_substitution(scaled_ingredients, ing, best_sub, scale_factor)
 
-        # Расчет порций
+
         manual_servings = recipe.get('servings', None)
         servings = self._calculate_servings(scaled_ingredients, manual_servings)
 
@@ -554,7 +569,7 @@ class RecipeAdapter:
             'allergy_issues': problem_allergies,
             'substitutions': substitutions_made,
             'alternatives': alternatives_for_display,
-            'scale_factor': optimal_scale,
+            'scale_factor': scale_factor,
             'steps': recipe.get('steps', []),
             'servings': servings
         }
@@ -577,6 +592,13 @@ class RecipeAdapter:
     def _apply_substitution(self, ingredients, original_ing, substitution, scale_factor):
         # Применяет замену для проблемного ингредиента
 
+        # Если ингредиент "по вкусу" - не масштабируем
+        if original_ing.get('by_taste', False):
+            scale_factor = 1.0
+            quantity_value = 0
+        else:
+            quantity_value = original_ing.get('quantity', 0)
+
         unit_mapping = {
             'молоко': 'мл',
             'вода': 'мл',
@@ -595,7 +617,7 @@ class RecipeAdapter:
             'горох': 'г',
             'фасоль': 'г',
             'кукуруза': 'г',
-            'банка': 'г'  # банка конвертируется в граммы
+            'банка': 'г'
         }
 
         if 'льняная мука' in substitution['alternative']:
@@ -605,7 +627,7 @@ class RecipeAdapter:
         elif substitution['alternative'] in unit_mapping:
             new_unit = unit_mapping[substitution['alternative']]
         else:
-            new_unit = original_ing['unit']
+            new_unit = original_ing.get('unit', 'шт')
 
         ratio = substitution.get('ratio', 1.0)
 
@@ -618,35 +640,47 @@ class RecipeAdapter:
                 "нут": 400,
                 "чечевица": 400
             }
-            grams_per_can = can_to_grams.get(original_ing['name'], 400)
-            original_quantity_grams = original_ing['quantity'] * grams_per_can
+            grams_per_can = can_to_grams.get(original_ing.get('name', ''), 400)
+            original_quantity_grams = quantity_value * grams_per_can
             new_quantity = original_quantity_grams * scale_factor * ratio
             new_unit = 'г'
         else:
-            new_quantity = original_ing['quantity'] * scale_factor * ratio
+            new_quantity = quantity_value * scale_factor * ratio
 
         # Специальная обработка
-        if original_ing['name'] == 'яйца' and 'льняная мука' in substitution['alternative']:
-            new_quantity = original_ing['quantity'] * 4
+        if original_ing.get('name') == 'яйца' and 'льняная мука' in substitution['alternative']:
+            new_quantity = quantity_value * 4
             new_unit = 'ст.л'
-        elif original_ing['name'] == 'разрыхлитель' and 'сода + уксус' in substitution['alternative']:
-            new_quantity = original_ing['quantity'] * 0.5
+        elif original_ing.get('name') == 'разрыхлитель' and 'сода + уксус' in substitution['alternative']:
+            new_quantity = quantity_value * 0.5
             new_unit = 'ч.л'
-        elif 'масло сливочное' in original_ing['name'] and 'растительное масло' in substitution['alternative']:
-            new_quantity = original_ing['quantity'] * 0.8
+        elif 'масло сливочное' in original_ing.get('name', '') and 'растительное масло' in substitution['alternative']:
+            new_quantity = quantity_value * 0.8
             new_unit = 'мл'
 
-        substitute_ingredient = {
-            'name': substitution['alternative'],
-            'quantity': round(new_quantity, 1),
-            'unit': new_unit,
-            'is_substitute': True,
-            'original_name': original_ing['name']
-        }
+        # Для ингредиентов "по вкусу" используем текстовое обозначение
+        if original_ing.get('by_taste', False):
+            substitute_ingredient = {
+                'name': substitution['alternative'],
+                'quantity': None,
+                'unit': '',
+                'is_substitute': True,
+                'original_name': original_ing.get('name', ''),
+                'by_taste': True,
+                'by_taste_note': 'по вкусу'
+            }
+        else:
+            substitute_ingredient = {
+                'name': substitution['alternative'],
+                'quantity': round(new_quantity, 1),
+                'unit': new_unit,
+                'is_substitute': True,
+                'original_name': original_ing.get('name', '')
+            }
 
         # Заменяем ингредиент
         for i, ing in enumerate(ingredients):
-            if ing['name'] == original_ing['name']:
+            if ing.get('name') == original_ing.get('name'):
                 ingredients[i] = substitute_ingredient
                 break
 
@@ -699,24 +733,50 @@ class RecipeAdapter:
         ingredients = []
         lines = text.split('\n')
         for line in lines:
-            # Поддерживаем банки в рецептах
-            match = re.search(r'([а-яА-Я\s]+?)\s+(\d+[.,]?\d*)\s*(банка|банки|банок|б|г|мл|шт|ст\.л|ч\.л|кг|л)', line)
+            line = line.strip()
+            if not line:
+                continue
+
+            # Проверяем на фразы "по вкусу", "по желанию"
+            taste_phrases = ['по вкусу', 'по желанию', 'опционально', 'по необходимости']
+            is_by_taste = any(phrase in line.lower() for phrase in taste_phrases)
+
+            # Поддерживаем банки и обычные единицы
+            match = re.search(r'([а-яА-Я\s]+?)\s+(\d+[.,]?\d*)\s*(банка|банки|банок|б|г|мл|шт|ст\.л|ч\.л|кг|л)?', line)
             if match:
                 name = match.group(1).strip().lower()
                 name = self.normalize_ingredient_name(name)
                 quantity = float(match.group(2).replace(',', '.'))
-                unit = match.group(3)
+                unit = match.group(3) if match.group(3) else 'шт'
 
                 if unit in ['банка', 'банки', 'банок', 'б']:
                     unit = 'банка'
-                    # Конвертируем банки в граммы для расчетов (1 банка = 400г)
-                    # Но сохраняем оригинальную единицу для отображения
 
                 ingredients.append({
                     'name': name,
                     'quantity': quantity,
-                    'unit': unit
+                    'unit': unit,
+                    'by_taste': False
                 })
+            else:
+                # Если нет количества - ингредиент "по вкусу"
+                # Убираем фразы из названия
+                clean_name = line.lower()
+                for phrase in taste_phrases:
+                    clean_name = clean_name.replace(phrase, '').strip()
+
+                if clean_name:
+                    name = self.normalize_ingredient_name(clean_name)
+                else:
+                    name = self.normalize_ingredient_name(line)
+
+                ingredients.append({
+                    'name': name,
+                    'quantity': None,
+                    'unit': '',
+                    'by_taste': True
+                })
+
         return ingredients
 
     def normalize_ingredient_name(self, name):
@@ -813,9 +873,154 @@ with st.sidebar:
         st.write("• Определение количества порций")
         st.write("• Классификация типов блюд")
 
+    with st.expander("Управление базой данных", expanded=False):
+        if st.button("Восстановить базовые рецепты"):
+            # Восстанавливаем recipes.json
+            default_recipes = {
+                "recipes": [
+                    {
+                        "id": 1,
+                        "name": "Шоколадный торт",
+                        "category": "десерты",
+                        "ingredients": [
+                            {
+                                "name": "мука",
+                                "quantity": 300,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "яйца",
+                                "quantity": 3,
+                                "unit": "шт"
+                            },
+                            {
+                                "name": "молоко",
+                                "quantity": 200,
+                                "unit": "мл"
+                            },
+                            {
+                                "name": "сахар",
+                                "quantity": 150,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "масло сливочное",
+                                "quantity": 100,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "разрыхлитель",
+                                "quantity": 10,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "какао",
+                                "quantity": 50,
+                                "unit": "г"
+                            }
+                        ],
+                        "steps": [
+                            "Смешать сухие ингредиенты",
+                            "Добавить яйца и молоко",
+                            "Выпекать 30 мин при 180°C"
+                        ],
+                        "time": 60,
+                        "difficulty": "средняя"
+
+                    },
+                    {
+                        "id": 2,
+                        "name": "Блины",
+                        "category": "завтраки",
+                        "ingredients": [
+                            {
+                                "name": "мука",
+                                "quantity": 200,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "молоко",
+                                "quantity": 500,
+                                "unit": "мл"
+                            },
+                            {
+                                "name": "яйца",
+                                "quantity": 2,
+                                "unit": "шт"
+                            },
+                            {
+                                "name": "сахар",
+                                "quantity": 20,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "масло растительное",
+                                "quantity": 30,
+                                "unit": "мл"
+                            },
+                            {
+                                "name": "соль",
+                                "quantity": 2,
+                                "unit": "г"
+                            }
+                        ],
+                        "steps": [
+                            "Смешать все ингредиенты",
+                            "Жарить на сковороде"
+                        ],
+                        "time": 30,
+                        "difficulty": "легкая"
+                    },
+                    {
+                        "id": 3,
+                        "name": "Сырники",
+                        "category": "завтраки",
+                        "ingredients": [
+                            {
+                                "name": "творог",
+                                "quantity": 500,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "яйца",
+                                "quantity": 1,
+                                "unit": "шт"
+                            },
+                            {
+                                "name": "мука",
+                                "quantity": 100,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "сахар",
+                                "quantity": 50,
+                                "unit": "г"
+                            },
+                            {
+                                "name": "соль",
+                                "quantity": 1,
+                                "unit": "г"
+                            }
+                        ],
+                        "steps": [
+                            "Смешать творог с яйцом",
+                            "Добавить муку и сахар",
+                            "Обжарить на сковороде"
+                        ],
+                        "time": 40,
+                        "difficulty": "легкая"
+                    }
+                ]
+            }
+            with open("data/recipes.json", 'w', encoding='utf-8') as f:
+                json.dump(default_recipes, f, ensure_ascii=False, indent=2)
+            st.success("Базовые рецепты восстановлены!")
+            st.rerun()
+
 # Инициализация session_state для управления вкладками
 if 'active_tab' not in st.session_state:
-    st.session_state.active_tab = 0  # 0 - база рецептов, 1 - добавление
+    st.session_state.active_tab = 0
+
 
 
 # Функция для переключения вкладки
@@ -853,15 +1058,22 @@ with tab1:
 
             st.markdown("### Ингредиенты:")
             for ing in selected_recipe['ingredients']:
-                st.markdown(f"• {ing['name']}: {ing['quantity']}{ing['unit']}")
+                if ing.get('by_taste', False):
+                    st.markdown(f"• {ing['name']} (по вкусу)")
+                else:
+                    st.markdown(f"• {ing['name']}: {ing['quantity']}{ing['unit']}")
+
+
+
+
         else:
             st.warning("Рецепты не найдены")
+
 
     if filtered_recipes and 'selected_recipe' in locals():
         st.markdown("---")
 
         st.subheader("Какие продукты у тебя есть?")
-        st.caption("Формат: продукт количество единица (например: мука 500г, яйца 3 шт)")
 
         # Компактное поле ввода с подсказкой в help
         user_products = st.text_area(
@@ -870,6 +1082,7 @@ with tab1:
             key="products_tab1",
             height=80,
             help="""
+        Формат: продукт количество единица\n
         Если оставить пустым - будем считать, что у вас есть все продукты\n
         Если продукта нет - указать 0 (например: разрыхлитель 0г, молоко 0мл)"""
         )
@@ -888,7 +1101,7 @@ with tab1:
                 key="diet_tab1"
             )
 
-        if st.button("Адаптировать рецепт", type="primary", use_container_width=True):
+        if st.button("Адаптировать", type="primary", use_container_width=True):
             # Проверяем: если поле продуктов пустое, но есть аллергии или диета не "Нет" - всё равно работаем
             if user_products or (allergies_input) or (diet != "Нет"):
                 allergies = [a.strip().lower() for a in allergies_input.split(',')] if allergies_input else []
@@ -984,7 +1197,10 @@ with tab1:
                         else:
                             st.markdown(f"**{ing['name']}**")
                     with col2:
-                        st.markdown(f"{ing['quantity']}{ing['unit']}")
+                        if ing.get('by_taste'):
+                            st.markdown("по вкусу")
+                        else:
+                            st.markdown(f"{ing['quantity']}{ing['unit']}")
                     with col3:
                         if ing.get('original_name'):
                             st.caption(f"замена {ing['original_name']}")
@@ -999,7 +1215,7 @@ with tab1:
                 st.error("Введи продукты или укажи диету/аллергию")
 
 with tab2:
-    st.header("Добавить новый рецепт в базу")
+    st.header("Добавить новый рецепт")
 
     with st.form("add_recipe_form"):
         col1, col2 = st.columns(2)
@@ -1010,7 +1226,7 @@ with tab2:
                 "Количество порций",
                 min_value=1,
                 value=1,
-                help="Укажите, на сколько персон рассчитан рецепт. Если не уверены - оставьте 1, система рассчитает автоматически"
+                help="Укажите, на сколько персон рассчитан рецепт"
             )
 
         category = st.selectbox(
@@ -1019,18 +1235,18 @@ with tab2:
         )
 
         st.subheader("Ингредиенты")
-        st.info("Введи каждый ингредиент с новой строки в формате: название количество единица")
 
         ingredients_text = st.text_area(
             "Ингредиенты",
-            placeholder="мука 200г\nяйца 2 шт\nмолоко 100мл\nколбаса 150г\nмайонез 50г",
-            height=150
+            placeholder="мука 200г\nяйца 2 шт\nмолоко 100мл\nсоль по вкусу",
+            height=150,
+            help="Ввести каждый ингредиент с новой строки в формате: название количество единица"
         )
 
         st.subheader("Шаги приготовления")
         steps_text = st.text_area(
             "Каждый шаг с новой строки",
-            placeholder="Нарезать овощи\nДобавить колбасу\nЗаправить майонезом",
+            placeholder="Смешать сухие ингредиенты\nДобавить яйца и молоко\nВыпекать 30 мин",
             height=150
         )
 
@@ -1040,50 +1256,88 @@ with tab2:
         with col2:
             difficulty = st.selectbox("Сложность", ["легкая", "средняя", "сложная"])
 
-        submitted = st.form_submit_button("Сохранить рецепт", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Сохранить", type="primary", use_container_width=True)
 
         if submitted:
             if recipe_name and ingredients_text:
-                ingredients = []
-                for line in ingredients_text.strip().split('\n'):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    if ',' in line:
-                        line = line.replace(',', '')
-                    match = re.search(r'([а-яА-Я\s]+?)\s+(\d+[.,]?\d*)\s*(г|мл|шт|ст\.л|ч\.л|кг|л)?', line)
-                    if match:
-                        ingredients.append({
-                            'name': match.group(1).strip().lower(),
-                            'quantity': float(match.group(2).replace(',', '.')),
-                            'unit': match.group(3) if match.group(3) else 'шт'
-                        })
-                    else:
-                        st.warning(f"Не удалось распознать ингредиент: {line}")
+                # Проверяем, нет ли уже такого рецепта
+                existing_names = [r['name'].lower() for r in adapter.manager.get_all_recipes()]
 
-                steps = [s.strip() for s in steps_text.strip().split('\n') if s.strip()]
-
-                if ingredients:
-                    new_recipe = {
-                        'name': recipe_name,
-                        'category': category,
-                        'ingredients': ingredients,
-                        'steps': steps,
-                        'time': time,
-                        'difficulty': difficulty,
-                        'servings': servings_manual  # Добавляем ручные порции
-                    }
-
-                    recipe_id = adapter.manager.add_recipe(new_recipe)
-                    st.success(f"Рецепт '{recipe_name}' добавлен в базу!")
-
-                    # Переключаемся на вкладку с рецептами
-                    st.session_state.active_tab = 0
-                    st.rerun()
+                if recipe_name.lower() in existing_names:
+                    st.error(f"Рецепт '{recipe_name}' уже существует в базе!")
                 else:
-                    st.error("Не удалось распознать ингредиенты! Проверь формат.")
+                    ingredients = []
+                    taste_phrases = ['по вкусу', 'по желанию', 'опционально', 'по необходимости']
+                    invalid_lines = []
+
+                    for line in ingredients_text.strip().split('\n'):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if ',' in line:
+                            line = line.replace(',', '')
+
+                        is_by_taste = any(phrase in line.lower() for phrase in taste_phrases)
+                        match = re.search(
+                            r'([а-яА-Я\s]+?)\s+(\d+[.,]?\d*)\s*(банка|банки|банок|б|г|мл|шт|ст\.л|ч\.л|кг|л)?', line)
+
+                        if match:
+                            name = match.group(1).strip().lower()
+                            quantity = float(match.group(2).replace(',', '.'))
+                            unit = match.group(3) if match.group(3) else 'шт'
+
+                            if unit in ['банка', 'банки', 'банок', 'б']:
+                                unit = 'банка'
+
+                            name = adapter.normalize_ingredient_name(name)
+
+                            ingredients.append({
+                                'name': name,
+                                'quantity': quantity,
+                                'unit': unit,
+                                'by_taste': False
+                            })
+                        elif is_by_taste:
+                            clean_name = line.lower()
+                            for phrase in taste_phrases:
+                                clean_name = clean_name.replace(phrase, '').strip()
+                            name = adapter.normalize_ingredient_name(clean_name if clean_name else line.lower())
+
+                            ingredients.append({
+                                'name': name,
+                                'quantity': None,
+                                'unit': '',
+                                'by_taste': True
+                            })
+                        else:
+                            invalid_lines.append(line)
+
+                    if invalid_lines:
+                        st.warning(f"Не удалось распознать ингредиенты: {', '.join(invalid_lines)}")
+
+                    steps = [s.strip() for s in steps_text.strip().split('\n') if s.strip()]
+
+                    if ingredients:
+                        new_recipe = {
+                            'name': recipe_name,
+                            'category': category,
+                            'ingredients': ingredients,
+                            'steps': steps,
+                            'time': time,
+                            'difficulty': difficulty,
+                            'servings': servings_manual
+                        }
+
+                        recipe_id = adapter.manager.add_recipe(new_recipe)
+                        if recipe_id:
+                            st.success(f"Рецепт '{recipe_name}' успешно добавлен в базу!")
+                            st.rerun()
+                        else:
+                            st.error("Ошибка при добавлении рецепта!")
+                    else:
+                        st.error("Не удалось распознать ингредиенты! Проверьте формат.")
             else:
-                st.error("Заполни название и ингредиенты!")
+                st.error("Заполните название и ингредиенты!")
 
 st.markdown("---")
 st.markdown(

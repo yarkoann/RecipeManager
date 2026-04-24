@@ -48,7 +48,6 @@
       ],
       "time": 60,
       "difficulty": "средняя"
-
     },
     {
       "id": 2,
@@ -175,7 +174,45 @@
       ],
       "time": 30,
       "difficulty": "легкая"
-
+    },
+    {
+      "name": "яйцо с помидором",
+      "category": "завтраки",
+      "ingredients": [
+        {
+          "name": "яйца",
+          "quantity": 2.0,
+          "unit": "шт",
+          "by_taste": false
+        },
+        {
+          "name": "помидор",
+          "quantity": 1.0,
+          "unit": "шт",
+          "by_taste": false
+        },
+        {
+          "name": "соль",
+          "quantity": null,
+          "unit": "",
+          "by_taste": true
+        },
+        {
+          "name": "майонез",
+          "quantity": null,
+          "unit": "",
+          "by_taste": true
+        }
+      ],
+      "steps": [
+        "промыть и нарезать помидор",
+        "жарить яйца вместе с помидором",
+        "посолить по вкусу"
+      ],
+      "time": 5,
+      "difficulty": "легкая",
+      "servings": 1,
+      "id": 5
     }
   ]
 }
