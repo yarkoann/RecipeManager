@@ -793,20 +793,20 @@ st.set_page_config(
 # Загрузка стилей
 load_css()
 
-st.markdown('<h1 class="main-header">🍳 Умный адаптер рецептов</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">Умный адаптер рецептов</h1>', unsafe_allow_html=True)
 
 with st.sidebar:
-    with st.expander("📖 Как это работает", expanded=False):
+    with st.expander("Как это работает", expanded=False):
         st.markdown("""
         1. **Выбери рецепт** из базы
         2. **Укажи продукты**, которые есть (формат: название количество единица)
         3. **Добавь аллергии** и выбери диету
         4. **Получи адаптированный рецепт** с заменами!
 
-        💡 **Совет:** Если оставить поле продуктов пустым - система будет считать, что у вас есть всё
+        **Совет:** Если оставить поле продуктов пустым - система будет считать, что у вас есть всё
         """)
 
-    with st.expander("🤖 Где используется ИИ", expanded=False):
+    with st.expander("Где используется ИИ", expanded=False):
         st.write("• Оценка уверенности в заменах продуктов")
         st.write("• Расчет оптимальных пропорций при избытке")
         st.write("• Анализ совместимости с диетой")
@@ -823,7 +823,7 @@ def switch_to_recipes_tab():
     st.session_state.active_tab = 0
 
 
-tab1, tab2 = st.tabs(["📋 Выбрать из базы", "➕ Добавить рецепт"])
+tab1, tab2 = st.tabs(["Выбрать из базы", "Добавить рецепт"])
 
 with tab1:
     st.header("Выбери рецепт из базы")
@@ -831,14 +831,14 @@ with tab1:
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        search_query = st.text_input("🔍 Поиск по названию", key="search")
+        search_query = st.text_input("Поиск по названию", key="search")
         all_recipes = adapter.manager.get_all_recipes()
 
         if search_query:
             filtered_recipes = [r for r in all_recipes if search_query.lower() in r['name'].lower()]
         else:
             categories = sorted(set(r.get('category', 'другие') for r in all_recipes))
-            selected_category = st.selectbox("📁 Категория", ["Все"] + categories)
+            selected_category = st.selectbox("Категория", ["Все"] + categories)
 
             if selected_category == "Все":
                 filtered_recipes = all_recipes
@@ -848,7 +848,7 @@ with tab1:
     with col2:
         if filtered_recipes:
             recipe_names = [r['name'] for r in filtered_recipes]
-            selected_name = st.selectbox("🍽 Выбери рецепт", recipe_names)
+            selected_name = st.selectbox("Выбери рецепт", recipe_names)
             selected_recipe = next(r for r in filtered_recipes if r['name'] == selected_name)
 
             st.markdown("### Ингредиенты:")
@@ -860,7 +860,7 @@ with tab1:
     if filtered_recipes and 'selected_recipe' in locals():
         st.markdown("---")
 
-        st.subheader("🥫 Какие продукты у тебя есть?")
+        st.subheader("Какие продукты у тебя есть?")
         st.caption("Формат: продукт количество единица (например: мука 500г, яйца 3 шт)")
 
         # Компактное поле ввода с подсказкой в help
@@ -870,8 +870,8 @@ with tab1:
             key="products_tab1",
             height=80,
             help="""
-        💡 Если оставить пустым - будем считать, что у вас есть все продукты\n
-        💡 Если продукта нет - указать 0 (например: разрыхлитель 0г, молоко 0мл)"""
+        Если оставить пустым - будем считать, что у вас есть все продукты\n
+        Если продукта нет - указать 0 (например: разрыхлитель 0г, молоко 0мл)"""
         )
 
         col1, col2 = st.columns(2)
@@ -888,7 +888,7 @@ with tab1:
                 key="diet_tab1"
             )
 
-        if st.button("🍳 Адаптировать рецепт", type="primary", use_container_width=True):
+        if st.button("Адаптировать рецепт", type="primary", use_container_width=True):
             # Проверяем: если поле продуктов пустое, но есть аллергии или диета не "Нет" - всё равно работаем
             if user_products or (allergies_input) or (diet != "Нет"):
                 allergies = [a.strip().lower() for a in allergies_input.split(',')] if allergies_input else []
@@ -902,27 +902,27 @@ with tab1:
                     )
 
                 st.markdown("---")
-                st.markdown(f"## 🍳 {result['recipe_name']}")
+                st.markdown(f"## {result['recipe_name']}")
 
                 # Показываем порции
-                st.markdown(f"### 👥 Примерно на {result['servings']} персон")
+                st.markdown(f"### Примерно на {result['servings']} персон")
 
                 # Информация о масштабировании
                 if result['scale_factor'] != 1.0:
                     if result['scale_factor'] < 1.0:
-                        st.info(f"📏 **Рецепт уменьшен на {int((1 - result['scale_factor']) * 100)}%**")
+                        st.info(f"**Рецепт уменьшен на {int((1 - result['scale_factor']) * 100)}%**")
                     else:
-                        st.info(f"📏 **Рецепт увеличен в {result['scale_factor']:.1f} раз**")
+                        st.info(f"**Рецепт увеличен в {result['scale_factor']:.1f} раз**")
 
                 # Показываем избыток продуктов
                 if result['excess']:
-                    with st.expander("📈 Обнаружен избыток продуктов - рецепт увеличен"):
+                    with st.expander("Обнаружен избыток продуктов - рецепт увеличен"):
                         for e in result['excess']:
                             st.write(f"• {e['name']}: нужно {e['recipe_needs']}{e['unit']}, "
                                      f"у вас {e['user_has']}{e['unit']} (останется {e['excess']}{e['unit']})")
 
                 if result['short']:
-                    with st.expander("📉 Продуктов меньше нормы"):
+                    with st.expander("Продуктов меньше нормы"):
                         for s in result['short']:
                             st.write(
                                 f"• {s['name']}: нужно {s['quantity']}{s['unit']}, есть {s['user_quantity']}{s['unit']}")
@@ -930,21 +930,21 @@ with tab1:
 
                 # Показываем аллергии
                 if result['allergy_issues']:
-                    with st.expander("⚠️ Аллергены в рецепте"):
+                    with st.expander("Аллергены в рецепте"):
                         for a in result['allergy_issues']:
                             st.write(f"• {a['name']} содержит аллерген: {a['allergen']}")
                         st.info("💡 В разделе 'Другие доступные альтернативы' вы найдете варианты замен без аллергенов")
 
                 # Показываем проблемы с диетой
                 if result['diet_issues']:
-                    with st.expander("🥗 Проблемы с диетой"):
+                    with st.expander("Проблемы с диетой"):
                         for d in result['diet_issues']:
                             st.write(f"• {d['name']} не соответствует диете {d['diet']}")
                         st.info("💡 В разделе 'Другие доступные альтернативы' вы найдете варианты замен")
 
                 # Показываем произведенные замены
                 if result['substitutions']:
-                    with st.expander("🔄 Произведенные замены"):
+                    with st.expander("Произведенные замены"):
                         for sub in result['substitutions']:
                             st.write(f"• **{sub['original']}** → **{sub['alternative']}**")
                             st.caption(f"  Причина: {sub['reason']}")
@@ -953,7 +953,7 @@ with tab1:
 
                 # Показываем другие доступные альтернативы (только для проблемных ингредиентов)
                 if result.get('alternatives'):
-                    with st.expander("💡 Другие доступные альтернативы"):
+                    with st.expander("Другие доступные альтернативы"):
                         for alt_group in result['alternatives']:
                             # Показываем только если есть альтернативы, кроме выбранной
                             if len(alt_group['alternatives']) > 1:
@@ -971,7 +971,7 @@ with tab1:
                                 st.markdown("---")
 
                 # Показываем итоговые ингредиенты
-                st.markdown("### 🥣 Ингредиенты после адаптации:")
+                st.markdown("### Ингредиенты после адаптации:")
                 for ing in result['ingredients']:
                     col1, col2, col3 = st.columns([3, 1, 2])
                     with col1:
@@ -992,14 +992,14 @@ with tab1:
                             st.caption(f"нужно {ing['original_quantity']}{ing['unit']}")
 
                 if result['steps']:
-                    with st.expander("📝 Шаги приготовления"):
+                    with st.expander("Шаги приготовления"):
                         for i, step in enumerate(result['steps'], 1):
                             st.write(f"{i}. {step}")
             else:
                 st.error("Введи продукты или укажи диету/аллергию")
 
 with tab2:
-    st.header("➕ Добавить новый рецепт в базу")
+    st.header("Добавить новый рецепт в базу")
 
     with st.form("add_recipe_form"):
         col1, col2 = st.columns(2)
@@ -1040,7 +1040,7 @@ with tab2:
         with col2:
             difficulty = st.selectbox("Сложность", ["легкая", "средняя", "сложная"])
 
-        submitted = st.form_submit_button("💾 Сохранить рецепт", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Сохранить рецепт", type="primary", use_container_width=True)
 
         if submitted:
             if recipe_name and ingredients_text:
@@ -1075,7 +1075,7 @@ with tab2:
                     }
 
                     recipe_id = adapter.manager.add_recipe(new_recipe)
-                    st.success(f"✅ Рецепт '{recipe_name}' добавлен в базу!")
+                    st.success(f"Рецепт '{recipe_name}' добавлен в базу!")
 
                     # Переключаемся на вкладку с рецептами
                     st.session_state.active_tab = 0
@@ -1087,6 +1087,6 @@ with tab2:
 
 st.markdown("---")
 st.markdown(
-    "<center>🍳 Умный адаптер рецептов — курсовая работа по ИИ</center>",
+    "<center>Умный адаптер рецептов — курсовая работа по ИИ</center>",
     unsafe_allow_html=True
 )
