@@ -4,6 +4,7 @@
     { "name": "молоко", "category": "молочные", "allergens": ["лактоза"], "unit": "мл" },
     { "name": "яйца", "category": "яйца", "allergens": ["яйца"], "unit": "шт" },
     { "name": "творог", "category": "молочные", "allergens": ["лактоза"], "unit": "г" },
+    { "name": "мягкий творог", "category": "молочные", "allergens": ["лактоза"], "unit": "г" },
     { "name": "масло сливочное", "category": "молочные", "allergens": ["лактоза"], "unit": "г" },
     { "name": "масло растительное", "category": "масла", "allergens": [], "unit": "мл" },
     { "name": "сахар", "category": "сладкое", "allergens": [], "unit": "г" },
@@ -30,18 +31,22 @@
     { "name": "нут", "category": "бобовые", "allergens": [], "unit": "г" },
 
     { "name": "кукуруза", "category": "овощи", "allergens": [], "unit": "г" },
-    { "name": "картофель", "category": "овощи", "allergens": [], "unit": "г" },
+    { "name": "картофель", "category": "овощи", "allergens": ["паслен"], "unit": "г" },
     { "name": "морковь", "category": "овощи", "allergens": [], "unit": "г" },
-    { "name": "лук", "category": "овощи", "allergens": [], "unit": "г" },
+    { "name": "репчатый лук", "category": "овощи", "allergens": [], "unit": "г" },
+    { "name": "зеленый лук", "category": "овощи", "allergens": [], "unit": "г" },
     { "name": "чеснок", "category": "овощи", "allergens": [], "unit": "г" },
-    { "name": "помидор", "category": "овощи", "allergens": [], "unit": "шт" },
+    { "name": "помидор", "category": "овощи", "allergens": ["паслен"], "unit": "шт" },
     { "name": "огурец", "category": "овощи", "allergens": [], "unit": "шт" },
     { "name": "огурцы соленые", "category": "овощи", "allergens": [], "unit": "г" },
     { "name": "кабачок", "category": "овощи", "allergens": [], "unit": "г" },
-    { "name": "баклажан", "category": "овощи", "allergens": [], "unit": "г" },
+    { "name": "баклажан", "category": "овощи", "allergens": ["паслен"], "unit": "г" },
     { "name": "цветная капуста", "category": "овощи", "allergens": [], "unit": "г" },
     { "name": "брокколи", "category": "овощи", "allergens": [], "unit": "г" },
     { "name": "шпинат", "category": "овощи", "allergens": [], "unit": "г" },
+    { "name": "тыква", "category": "овощи", "allergens": ["тыква"], "unit": "г" },
+    { "name": "сладкий перец", "category": "овощи", "allergens": ["паслен"], "unit": "г" },
+    { "name": "острый перец", "category": "овощи", "allergens": ["паслен"], "unit": "г" },
 
     { "name": "курица", "category": "мясные", "allergens": [], "unit": "г" },
     { "name": "мясо", "category": "мясные", "allergens": [], "unit": "г" },
@@ -59,6 +64,7 @@
     { "name": "сметана", "category": "молочные", "allergens": ["лактоза","молоко"], "unit": "г" },
     { "name": "кефир", "category": "молочные", "allergens": ["лактоза","молоко"], "unit": "мл" },
     { "name": "йогурт", "category": "молочные", "allergens": ["лактоза","молоко"], "unit": "г" },
+    { "name": "греческий йогурт", "category": "молочные", "allergens": ["лактоза","молоко"], "unit": "г" },
     { "name": "сливки", "category": "молочные", "allergens": ["лактоза","молоко"], "unit": "мл" },
 
     { "name": "тофу", "category": "бобовые", "allergens": ["соя"], "unit": "г" },
@@ -75,6 +81,8 @@
     { "name": "макароны", "category": "крупы", "allergens": ["глютен","пшеница"], "unit": "г" },
 
     { "name": "хлеб", "category": "выпечка", "allergens": ["глютен","пшеница"], "unit": "г" },
+    { "name": "белый хлеб", "category": "выпечка", "allergens": ["глютен","пшеница"], "unit": "г" },
+    { "name": "черный хлеб", "category": "выпечка", "allergens": ["глютен","рожь"], "unit": "г" },
 
     { "name": "мед", "category": "сладкое", "allergens": ["мед"], "unit": "г" },
     { "name": "шоколад", "category": "сладкое", "allergens": [], "unit": "г" },
@@ -82,21 +90,27 @@
     { "name": "перец", "category": "специи", "allergens": [], "unit": "г" },
     { "name": "желатин", "category": "желирующие", "allergens": [], "unit": "г" },
     { "name": "аквафаба", "category": "бобовые", "allergens": [], "unit": "мл" },
+
+
     { "name": "банан", "category": "фрукты", "allergens": [], "unit": "шт" },
     { "name": "яблоко", "category": "фрукты", "allergens": [], "unit": "шт" },
     { "name": "лимон", "category": "фрукты", "allergens": [], "unit": "шт" },
     { "name": "авокадо", "category": "фрукты", "allergens": [], "unit": "шт" },
-
     { "name": "виноград", "category": "фрукты", "allergens": [], "unit": "шт" },
 
     { "name": "орехи грецкие", "category": "орехи", "allergens": ["орехи","грецкие орехи"], "unit": "г" },
     { "name": "орехи кешью", "category": "орехи", "allergens": ["орехи","кешью"], "unit": "г" },
     { "name": "арахис", "category": "орехи", "allergens": ["арахис"], "unit": "г" },
+    { "name": "тыквенные семечки", "category": "семечки", "allergens": ["тыква"], "unit": "г" },
 
     { "name": "миндаль", "category": "орехи", "allergens": ["орехи","миндаль"], "unit": "г" },
     { "name": "фундук", "category": "орехи", "allergens": ["орехи","фундук"], "unit": "г" },
 
     { "name": "кунжут", "category": "орехи", "allergens": ["кунжут"], "unit": "г" },
-    { "name": "грибы", "category": "грибы", "allergens": [], "unit": "г" }
+    { "name": "грибы", "category": "грибы", "allergens": [], "unit": "г" },
+
+    { "name": "печенье савоярди", "category": "печенье", "allergens": ["глютен"], "unit": "шт" }
+
+
   ]
 }
