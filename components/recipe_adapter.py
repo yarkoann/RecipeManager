@@ -1,7 +1,7 @@
-"""
-RecipeAdapter — центральный компонент адаптации рецептов.
-Координирует парсинг, масштабирование, замены и оценку уверенности.
-"""
+
+#RecipeAdapter — центральный компонент адаптации рецептов.
+#Координирует парсинг, масштабирование, замены и оценку уверенности.
+
 import re
 from typing import List, Dict
 
@@ -16,11 +16,11 @@ class RecipeAdapter:
         self.manager = RecipeManager()
         self.substitution_confidence: Dict[str, float] = {}
 
-    # ── Синонимы и нормализация ───────────────────────────────────────────
+    # Синонимы и нормализация
 
-    # Маппинг «как пишет пользователь» → «как называется в базе»
     SYNONYM_MAP = {
-        # картофель
+
+
         "горошек": "горох",
         "консервированный горох": "горох",
         "консервированный горошек": "горох",
@@ -31,19 +31,21 @@ class RecipeAdapter:
         "консервированный нут": "нут",
         "консервированная кукуруза": "кукуруза",
         "сладкая кукуруза": "кукуруза",
-        "картошка": "картофель",
         # молочные
         "коровье молоко": "молоко",
         "домашнее молоко": "молоко",
         "сливочное маслице": "масло сливочное",
         "сливочное масло": "масло сливочное",
         # курица
+
+        "курица": "курица",
         "куриное филе": "курица",
         "куриная грудка": "курица",
         "куриное бедро": "курица",
-        "бедро куриное": "курица",
-        "грудка куриная": "курица",
         "филе куриное": "курица",
+        "грудка куриная": "курица",
+        "бедро куриное": "курица",
+        "куриные бедра": "курица",
         # мясо
         "свинина": "мясо",
         "говядина": "мясо",
@@ -51,9 +53,6 @@ class RecipeAdapter:
         "сладкий перец": "перец сладкий",
         "болгарский перец": "перец болгарский",
         "острый перец": "перец острый",
-        # лук
-        "репчатый лук": "лук репчатый",
-        "зеленый лук": "лук зеленый",
         # растительное масло
         "растительное масло": "масло растительное",
         # прочее
@@ -99,6 +98,7 @@ class RecipeAdapter:
         "картофель": "картофель",
         "болгарский перец": "перец болгарский",
         "сладкий перец": "перец болгарский",
+        "лук": "лук репчатый",
         "репчатый лук": "лук репчатый",
         "зелёный лук": "лук зеленый",
 
@@ -118,15 +118,13 @@ class RecipeAdapter:
         "картофель": ["картофель", "картошка"],
         "гречка": ["гречка", "гречневая крупа", "греча"],
         "овсянка": ["овсянка", "овсяные хлопья"],
-        "лук репчатый": ["лук репчатый", "репчатый лук"],
+        "лук репчатый": ["лук репчатый", "репчатый лук","лук"],
         "перец болгарский": ["перец болгарский", "болгарский перец", "сладкий перец"],
+        "курица": ["курица", "куриное бедро", "куриное филе", "куриная грудка", "бедро куриное", "филе куриное", "грудка куриная"],
+
     }
 
     def expand_ingredient_for_search(self, product_name: str) -> list:
-        """
-        Расширяет название продукта до группы синонимов для поиска.
-        Например: "сыр" → ["сыр", "пармезан", "моцарелла", ...]
-        """
         product_lower = product_name.lower().strip()
 
         # Сначала проверяем, есть ли продукт в группах
@@ -202,7 +200,7 @@ class RecipeAdapter:
             expanded.extend(ALLERGEN_GROUPS.get(a_l, [a_l]))
         return list(set(expanded))
 
-    # ── Парсинг пользовательского ввода ───────────────────────────────────
+    # Парсинг пользовательского ввода
 
     def parse_user_products(self, text: str) -> List[dict]:
         products = []
@@ -210,28 +208,35 @@ class RecipeAdapter:
             item = item.strip()
             if not item:
                 continue
+
+            is_zero = re.search(r'0\s*$', item)
             is_canned = any(w in item for w in [
                 "консервированный", "консервированная", "консервированное",
                 "баночный", "баночная", "банка", "банок",
             ])
+
             match = re.search(
                 r"([а-яА-Я\s]+?)\s+(\d+[.,]?\d*)\s*"
                 r"(банка|банки|банок|б|шт|г|мл|ст\.л|ч\.л|кг|л)?",
                 item,
             )
             if match:
-                name = self.normalize_ingredient_name(match.group(1).strip().lower())
+                name_raw = match.group(1).strip().lower()
+
+                name = self.normalize_ingredient_name(name_raw)
                 quantity = float(match.group(2).replace(",", "."))
-                unit = match.group(3) or "шт"
+                unit = match.group(3) or "г"  # если не указано, по умолчанию граммы
                 if is_canned and unit == "шт":
                     unit = "банка"
                 if unit in ["банка", "банки", "банок", "б"]:
                     unit = "банка"
                 products.append({"name": name, "quantity": quantity, "unit": unit})
             else:
-                name = self.normalize_ingredient_name(item.lower())
-                unit = "банка" if is_canned else "шт"
-                products.append({"name": name, "quantity": None, "unit": unit})
+                name_raw = item.lower()
+                name = self.normalize_ingredient_name(name_raw)
+                unit = "банка" if is_canned else "г"  # по умолчанию граммы
+                quantity = 0 if is_zero else None
+                products.append({"name": name, "quantity": quantity, "unit": unit})
         return products
 
     def _parse_recipe_text(self, text: str) -> list:
@@ -428,23 +433,88 @@ class RecipeAdapter:
         # Масштабирование
         scale_factor = 1.0
         if has_user_products:
+            # Нормализуем user_dict для сравнения
+            user_dict_normalized = {}
+            for p in user_products:
+                p_name = p["name"]
+                # Сохраняем под нормализованным именем и под оригинальным
+                user_dict_normalized[p_name] = p
+                # Также пробуем найти в группах
+                for group_name, members in self.INGREDIENT_GROUPS.items():
+                    if p_name == group_name or p_name in members:
+                        for member in members:
+                            if member not in user_dict_normalized:
+                                user_dict_normalized[member] = p
+
             min_scale = 1.0
             for ing in recipe_ingredients:
                 if ing.get("by_taste") or ing.get("quantity") is None:
                     continue
-                if ing["name"] in user_dict:
-                    uq = user_dict[ing["name"]]["quantity"]
+
+                ing_name = ing["name"]
+                ing_normalized = self.normalize_ingredient_name(ing_name)
+
+                # Ищем продукт пользователя по разным вариантам имени
+                user_product = None
+                for key in [ing_name, ing_normalized]:
+                    if key in user_dict_normalized:
+                        user_product = user_dict_normalized[key]
+                        break
+
+                # Также проверяем группы
+                if not user_product:
+                    for group_name, members in self.INGREDIENT_GROUPS.items():
+                        if ing_normalized == group_name or ing_normalized in members:
+                            if group_name in user_dict_normalized:
+                                user_product = user_dict_normalized[group_name]
+                                break
+                            for member in members:
+                                if member in user_dict_normalized:
+                                    user_product = user_dict_normalized[member]
+                                    break
+                        if user_product:
+                            break
+
+                if user_product:
+                    uq = user_product["quantity"]
                     if uq is not None and uq > 0 and uq < ing["quantity"]:
                         min_scale = min(min_scale, uq / ing["quantity"])
+
             scale_factor = min_scale
+
+            # Также проверяем максимальное масштабирование (если продуктов больше)
             max_scale = scale_factor
             for ing in recipe_ingredients:
                 if ing.get("by_taste") or ing.get("quantity") is None:
                     continue
-                if ing["name"] in user_dict:
-                    uq = user_dict[ing["name"]]["quantity"]
+
+                ing_name = ing["name"]
+                ing_normalized = self.normalize_ingredient_name(ing_name)
+
+                user_product = None
+                for key in [ing_name, ing_normalized]:
+                    if key in user_dict_normalized:
+                        user_product = user_dict_normalized[key]
+                        break
+
+                if not user_product:
+                    for group_name, members in self.INGREDIENT_GROUPS.items():
+                        if ing_normalized == group_name or ing_normalized in members:
+                            if group_name in user_dict_normalized:
+                                user_product = user_dict_normalized[group_name]
+                                break
+                            for member in members:
+                                if member in user_dict_normalized:
+                                    user_product = user_dict_normalized[member]
+                                    break
+                        if user_product:
+                            break
+
+                if user_product:
+                    uq = user_product["quantity"]
                     if uq is not None and uq > 0 and uq > ing["quantity"] * scale_factor:
                         max_scale = max(max_scale, uq / ing["quantity"])
+
             scale_factor = max_scale
 
         # Разметка ингредиентов
@@ -458,9 +528,35 @@ class RecipeAdapter:
             if ing.get("quantity") is None:
                 scaled_ingredients.append(ing)
                 continue
+
             new_quantity = ing["quantity"] * scale_factor
-            if ing["name"] in user_dict:
-                uq = user_dict[ing["name"]]["quantity"]
+            ing_name = ing["name"]
+            ing_normalized = self.normalize_ingredient_name(ing_name)
+
+            # Ищем продукт пользователя
+            user_product = None
+            if has_user_products:
+                for key in [ing_name, ing_normalized]:
+                    if key in user_dict:
+                        user_product = user_dict[key]
+                        break
+
+                # Проверяем группы
+                if not user_product:
+                    for group_name, members in self.INGREDIENT_GROUPS.items():
+                        if ing_normalized == group_name or ing_normalized in members:
+                            if group_name in user_dict:
+                                user_product = user_dict[group_name]
+                                break
+                            for member in members:
+                                if member in user_dict:
+                                    user_product = user_dict[member]
+                                    break
+                        if user_product:
+                            break
+
+            if user_product:
+                uq = user_product["quantity"]
                 if uq is None:
                     scaled_ingredients.append({**ing, "quantity": round(new_quantity, 1)})
                 elif uq == 0:
@@ -479,11 +575,13 @@ class RecipeAdapter:
                     scaled_ingredients.append({**ing, "quantity": round(new_quantity, 1)})
                     available.append(ing)
                 else:
+                    # У пользователя МЕНЬШЕ, чем нужно - уменьшаем рецепт
+                    actual_quantity = uq * (new_quantity / ing["quantity"])  # пропорционально
                     scaled_ingredients.append({
-                        **ing, "quantity": uq, "limited": True,
+                        **ing, "quantity": round(uq, 1), "limited": True,
                         "original_quantity": round(new_quantity, 1),
                     })
-                    short.append({**ing, "user_quantity": uq, "shortage": ing["quantity"] - uq})
+                    short.append({**ing, "user_quantity": uq, "shortage": round(new_quantity - uq, 1)})
             else:
                 if has_user_products:
                     scaled_ingredients.append({**ing, "quantity": round(new_quantity, 1), "missing": True})
@@ -496,7 +594,14 @@ class RecipeAdapter:
         diet_issues = []
         if diet and diet != "Нет":
             for ing in recipe_ingredients:
-                compatible, _, _ = diet_analyzer.check_compatibility(ing, diet, dish_context=dish_context)
+                # Используем нормализованное имя для проверки
+                ing_normalized = self.normalize_ingredient_name(ing["name"])
+                ing_for_check = ing.copy()
+                ing_for_check["name"] = ing_normalized
+
+                compatible, _, _ = diet_analyzer.check_compatibility(
+                    ing_for_check, diet, dish_context=dish_context
+                )
                 if not compatible and not any(d["name"] == ing["name"] for d in diet_issues):
                     diet_issues.append({**ing, "diet": diet})
 

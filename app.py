@@ -260,6 +260,8 @@ with tab2:
         if products_input.strip():
             user_products_list = adapter.parse_user_products(products_input)
             results = adapter.manager.search_by_available_ingredients(user_products_list)
+
+            # Фильтруем по проценту совпадения (как в первом варианте)
             filtered = [r for r in results if r["pct"] >= min_match_pct][:show_top]
 
             if filtered:
@@ -275,20 +277,25 @@ with tab2:
                         c2.metric("Не хватает", res["missing"])
                         c3.metric("Совпадение", f"{pct}%")
 
-                        user_names = {p["name"].lower() for p in user_products_list}
-                        have, need = [], []
-                        for ing in recipe.get("ingredients", []):
-                            if ing.get("by_taste") or ing.get("quantity") is None:
-                                continue
-                            if any(u in ing["name"].lower() or ing["name"].lower() in u for u in user_names):
-                                have.append(ing["name"])
-                            else:
-                                need.append(ing["name"])
+                        # Используем готовые списки из search_by_available_ingredients
+                        have = res.get('matched_names', [])
+                        need = res.get('missing_names', [])
+
+                        # Если по какой-то причине списки пустые - вычисляем как раньше
+                        if not have and not need:
+                            user_names = {p["name"].lower() for p in user_products_list}
+                            for ing in recipe.get("ingredients", []):
+                                if ing.get("by_taste") or ing.get("quantity") is None:
+                                    continue
+                                if any(u in ing["name"].lower() or ing["name"].lower() in u for u in user_names):
+                                    have.append(ing["name"])
+                                else:
+                                    need.append(ing["name"])
 
                         col_h, col_n = st.columns(2)
                         with col_h:
                             if have:
-                                st.markdown("**✅ Есть:**")
+                                st.markdown("**Есть:**")
                                 for h in have:
                                     st.markdown(f"• {h}")
                         with col_n:

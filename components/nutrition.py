@@ -1,6 +1,6 @@
-"""
-nutrition.py — расчёт пищевой ценности (КБЖУ) адаптированного рецепта.
-"""
+
+#nutrition.py — расчёт пищевой ценности (КБЖУ) адаптированного рецепта.
+
 from components.recipe_manager import can_to_grams
 
 # Примерная калорийность и БЖУ на 100 г (ккал, белки г, жиры г, углеводы г)
@@ -37,7 +37,7 @@ NUTRITION_DB = {
 
 
 def calculate_nutrition(ingredients: list) -> dict:
-    """Расчёт КБЖУ для всего блюда."""
+    # для всего блюда
     total = {"ккал": 0, "белки": 0, "жиры": 0, "углеводы": 0}
     for ing in ingredients:
         if ing.get("by_taste") or ing.get("quantity") is None:
@@ -62,7 +62,7 @@ def calculate_nutrition(ingredients: list) -> dict:
         else:
             grams = qty
 
-        # Ищем в базе напрямую, потом по вхождению
+        # Ищем в базе напрямую
         entry = NUTRITION_DB.get(name)
         if not entry:
             for key in NUTRITION_DB:

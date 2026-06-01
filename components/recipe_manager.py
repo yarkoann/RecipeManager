@@ -1,6 +1,6 @@
-"""
-RecipeManager — операции CRUD с базой данных рецептов и ингредиентов.
-"""
+
+# RecipeManager — операции CRUD с базой данных рецептов и ингредиентов
+
 import json
 import os
 from typing import List, Dict, Optional
@@ -83,39 +83,49 @@ class RecipeManager:
             return True
         return False
 
-    # components/recipe_manager.py — улучшенный search_by_available_ingredients
-
     def search_by_available_ingredients(self, user_products: list) -> list:
-        """Умный поиск: находит рецепты с учётом синонимов и групп продуктов."""
-        # Расширяем список продуктов пользователя с учётом синонимов
-        expanded_user_products = []
+        from components.recipe_adapter import RecipeAdapter
+        adapter = RecipeAdapter()
+
+        # Расширяем список продуктов пользователя с учётом всех синонимов
+        expanded_user_products = set()
+
         for p in user_products:
-            name = p.get('name', '').lower()
-            expanded_user_products.append(name)
+            name = p.get('name', '').lower().strip()
+            if not name:
+                continue
 
-            # Добавляем синонимы через RecipeAdapter (нужен доступ)
-            # Для простоты — добавим базовые группы прямо здесь
-            synonym_groups = {
-                "сыр": ["пармезан", "моцарелла", "чеддер", "рикотта", "фета", "брынза", "гауда"],
-                "помидор": ["томат", "томаты", "черри"],
-                "мука": ["мука пшеничная", "пшеничная мука"],
-                "картофель": ["картошка"],
-                "гречка": ["гречневая крупа", "греча"],
-                "овсянка": ["овсяные хлопья"],
-            }
+            # Добавляем само имя
+            expanded_user_products.add(name)
 
-            for group, members in synonym_groups.items():
-                if name == group or name in members:
-                    expanded_user_products.append(group)
-                    expanded_user_products.extend(members)
-                elif name in [group] + members:
-                    expanded_user_products.append(group)
-                    expanded_user_products.extend(members)
+            # Нормализуем через адаптер (картошка -> картофель, куриное бедро -> курица)
+            normalized = adapter.normalize_ingredient_name(name)
+            expanded_user_products.add(normalized)
 
-        user_names = set(expanded_user_products)
+            # Добавляем все синонимы, где это имя является ключом или значением
+            for orig, target in adapter.SYNONYM_MAP.items():
+                if name == orig or name == target:
+                    expanded_user_products.add(orig)
+                    expanded_user_products.add(target)
+                if normalized == orig or normalized == target:
+                    expanded_user_products.add(orig)
+                    expanded_user_products.add(target)
+
+            # Добавляем всю группу, если продукт входит в группу
+            for group_name, members in adapter.INGREDIENT_GROUPS.items():
+                if name == group_name or name in members:
+                    expanded_user_products.add(group_name)
+                    expanded_user_products.update(members)
+                if normalized == group_name or normalized in members:
+                    expanded_user_products.add(group_name)
+                    expanded_user_products.update(members)
+
+        # Для отладки - можно посмотреть в st.sidebar
+        # st.sidebar.write(f"Расширенные продукты: {expanded_user_products}")
 
         results = []
         for recipe in self.recipes:
+            # Собираем обязательные ингредиенты (не "по вкусу")
             required = [
                 ing for ing in recipe.get('ingredients', [])
                 if not ing.get('by_taste') and ing.get('quantity') is not None
@@ -124,35 +134,52 @@ class RecipeManager:
                 continue
 
             matched = 0
+            matched_names = []
+            missing_names = []
+
             for ing in required:
-                ing_name = ing['name'].lower()
-                # Проверяем совпадение:
-                # - точное совпадение
-                # - ингредиент пользователя содержит название из рецепта
-                # - название из рецепта содержит ингредиент пользователя
-                # - через группы синонимов
+                ing_name = ing['name'].lower().strip()
+                # Нормализуем ингредиент рецепта
+                ing_normalized = adapter.normalize_ingredient_name(ing_name)
+
                 found = False
-                for user_name in user_names:
-                    if ing_name == user_name or user_name in ing_name or ing_name in user_name:
+                for user_name in expanded_user_products:
+                    # Прямое совпадение
+                    if ing_name == user_name or ing_normalized == user_name:
                         found = True
                         break
+                    # Частичное совпадение (например "лук" в "лук репчатый")
+                    if ing_name in user_name or user_name in ing_name:
+                        found = True
+                        break
+                    if ing_normalized in user_name or user_name in ing_normalized:
+                        found = True
+                        break
+
                 if found:
                     matched += 1
+                    matched_names.append(ing_name)
+                else:
+                    missing_names.append(ing_name)
 
-            pct = round(matched / len(required) * 100) if required else 0
-            results.append({
-                'recipe': recipe,
-                'matched': matched,
-                'total': len(required),
-                'pct': pct,
-                'missing': len(required) - matched,
-            })
+            if matched > 0:  # Показываем только рецепты, где есть хоть одно совпадение
+                pct = round(matched / len(required) * 100) if required else 0
+                results.append({
+                    'recipe': recipe,
+                    'matched': matched,
+                    'total': len(required),
+                    'pct': pct,
+                    'missing': len(required) - matched,
+                    'matched_names': matched_names,
+                    'missing_names': missing_names,
+                })
 
+        # Сортируем по проценту совпадения
         results.sort(key=lambda x: x['pct'], reverse=True)
         return results
 
     def get_ingredient_info(self, name):
-        """Поиск ингредиента по точному совпадению или вхождению подстроки."""
+
         name_lower = name.lower().strip()
         # Сначала точное совпадение
         exact = next((i for i in self.ingredients if i["name"].lower() == name_lower), None)

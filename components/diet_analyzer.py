@@ -1,8 +1,8 @@
-"""
-DietAnalyzer — анализ совместимости ингредиентов с диетами и аллергиями.
-DishContextClassifier — определение типа блюда и роли ингредиентов.
-AdaptationFeasibilityChecker — оценка возможности адаптации рецепта.
-"""
+
+# DietAnalyzer — анализ совместимости ингредиентов с диетами и аллергиями.
+#  DishContextClassifier — определение типа блюда и роли ингредиентов.
+#  AdaptationFeasibilityChecker — оценка возможности адаптации рецепта.
+
 import json
 import os
 
@@ -150,11 +150,13 @@ class DietAnalyzer:
         self.diet_restrictions = {
             "Кето": {
                 "запрещено": [
-                    "сахар", "мука", "крупы", "хлеб", "макароны", "морковь", "картофель",
-                    "рис", "банан", "виноград", "яблоко","мед", "конфеты", "фасоль", "чечевица",
-                    "горох", "горошек", "нут", "бобы", "кукуруза", "манка", "овсянка",
-                    "гречка", "картошка","печенье савоярди","тыква","молоко","творог",
-                    "мягкий творог","майонез","белый хлеб","кетчуп"
+                    "сахар", "мука", "крупы", "хлеб", "макароны",
+                    "морковь", "картофель", "картошка",
+                    "рис", "банан", "виноград", "яблоко", "мед", "конфеты",
+                    "фасоль", "чечевица", "горох", "горошек", "нут", "бобы",
+                    "кукуруза", "манка", "овсянка", "гречка",
+                    "тыква", "молоко", "творог", "мягкий творог", "майонез",
+                    "белый хлеб", "кетчуп", "картофель фри", "чипсы",
                 ],
                 "разрешено": [
                     "мясо", "рыба", "яйца", "сыр", "орехи", "авокадо", "масло растительное",
@@ -241,30 +243,43 @@ class DietAnalyzer:
             pass
         return []
 
-    # components/diet_analyzer.py — исправленный метод check_compatibility
-
     def check_compatibility(self, ingredient, diet, dish_context=None):
         if not diet or diet == "Нет":
             return True, None, None
+
         name = ingredient.get("name", "").lower().strip()
-        # Убираем уточняющие прилагательные для поиска
-        for prefix in ["консервированный ", "консервированная ", "консервированное ",
-                       "маринованные ", "запечённая ", "свежий ", "свежая "]:
-            name = name.replace(prefix, "")
+
+        # Нормализуем через RecipeAdapter
+        from components.recipe_adapter import RecipeAdapter
+        adapter = RecipeAdapter()
+        normalized_name = adapter.normalize_ingredient_name(name)
 
         if diet in self.diet_restrictions:
-            # ИСПРАВЛЕНИЕ: точное сравнение, а не "in"
             for forbidden in self.diet_restrictions[diet].get("запрещено", []):
-                # Проверяем точное совпадение или если запрещённый продукт является частью названия
-                # (например "картофель" в "картофель фри") — но НЕ наоборот
-                if forbidden.lower() == name or name == forbidden.lower():
+                forbidden_lower = forbidden.lower()
+
+                # Проверяем исходное имя
+                if name == forbidden_lower:
                     alts = self.find_alternatives(name, diet, dish_context=dish_context)
                     return False, f"Запрещено на диете {diet}", alts
-                # Только если имя ингредиента содержит запрещённый продукт целиком (как слово)
-                # Например "картофель фри" содержит "картофель"
-                elif forbidden.lower() in name.split():
-                    alts = self.find_alternatives(name, diet, dish_context=dish_context)
+
+                # Проверяем нормализованное имя (куриное бедро -> курица)
+                if normalized_name == forbidden_lower:
+                    alts = self.find_alternatives(normalized_name, diet, dish_context=dish_context)
                     return False, f"Запрещено на диете {diet}", alts
+
+                # Проверяем частичное совпадение
+                if forbidden_lower in name or name in forbidden_lower:
+                    alts = self.find_alternatives(forbidden_lower, diet, dish_context=dish_context)
+                    return False, f"Запрещено на диете {diet}", alts
+
+                # Проверяем через группы синонимов
+                for group_name, members in adapter.INGREDIENT_GROUPS.items():
+                    if name in members or normalized_name in members:
+                        if forbidden_lower == group_name or forbidden_lower in members:
+                            alts = self.find_alternatives(group_name, diet, dish_context=dish_context)
+                            return False, f"Запрещено на диете {diet}", alts
+
         return True, None, None
 
     def find_alternatives(self, ingredient_name, diet=None, dish_context=None):
@@ -273,19 +288,49 @@ class DietAnalyzer:
         egg_role = (dish_context or {}).get("egg_role", "general")
         is_sweet = (dish_context or {}).get("is_sweet", False)
 
+        # Нормализуем название
+        from components.recipe_adapter import RecipeAdapter
+        adapter = RecipeAdapter()
+        normalized_ing = adapter.normalize_ingredient_name(ingredient_name)
+
         for sub in subs:
-            ing = sub.get("ingredient", "")
-            if not (ing == ingredient_name or ingredient_name in ing or ing in ingredient_name):
+            ing = sub.get("ingredient", "").lower()
+            # Проверяем совпадение с исходным и нормализованным именем
+            ing_match = (
+                    ing == ingredient_name or
+                    ingredient_name in ing or
+                    ing in ingredient_name or
+                    ing == normalized_ing or
+                    normalized_ing in ing or
+                    ing in normalized_ing
+            )
+            if not ing_match:
                 continue
+
             condition = sub.get("condition", "")
             sub_role = sub.get("dish_role")
-            diet_match = (diet and condition.lower() == diet.lower()) or condition in ["всегда", "любая"]
+
+            # Проверка условия (диета)
+            diet_match = False
+            if condition in ["всегда", "любая"]:
+                diet_match = True
+            elif diet and condition.lower() == diet.lower():
+                diet_match = True
+            elif diet == "Вегетарианец" and condition == "Вегетарианец":
+                diet_match = True
+            elif diet == "Веган" and condition == "Веган":
+                diet_match = True
+
             if not diet_match:
                 continue
+
+            # Проверка роли
             if sub_role and sub_role != egg_role and sub_role != "general":
                 continue
 
             alt_name = sub["alternative"]
+
+            # Специальные проверки
             skip = False
             if "банан" in alt_name and not is_sweet:
                 skip = True
@@ -293,6 +338,7 @@ class DietAnalyzer:
                 skip = True
             if egg_role == "leavening" and any(x in alt_name for x in ["тофу", "нут отварной", "авокадо"]):
                 skip = True
+
             if skip:
                 continue
 
@@ -304,6 +350,7 @@ class DietAnalyzer:
                     "ratio": sub.get("ratio", 1.0),
                     "dish_role": sub_role,
                 })
+
         return alternatives
 
     def get_diet_info(self, diet):
